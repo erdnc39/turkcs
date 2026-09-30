@@ -30,60 +30,39 @@
 
 ---
 
-## ⌨️ Kısa kod (shortcode) ile ekleme
-
-Uzun adres yazmak yerine **tek kelimelik bir kod** yazarak da depo eklenebilir — özellikle televizyon kumandasıyla yazımda kolaylık sağlar.
-
-**Nasıl kullanılır:** **Ayarlar → Eklentiler → Depo ekle** kutusuna adres yerine sadece kodu yazıp **Depo ekle**'ye basın. `http://`, `.json` vb. hiçbir uzantı gerekmez.
-
-**Uygulamanın arkasındaki mantık** (`RepositoryManager.parseRepoUrl`):
-
-1. Yazılan metin değerlendirilir. `http://…`, `cloudstreamrepo://…` veya `https://cs.repo/…` kalıplarından birine uymuyorsa ve metin **yalnızca `a–z A–Z 0–9 _ - !` karakterlerinden** oluşuyorsa **kısa kod** olarak kabul edilir.
-2. Kod, kısaltıcı servisin adresine **yönlendirmeleri takip etmeden** (`allowRedirects = false`) gönderilir ve HTTP yanıtındaki **`Location` başlığı** okunur → çıkan gerçek `repo.json` adresidir.
-3. Kod **`!` işaretiyle** başlıyorsa bu kez alternatif kısaltıcı denenir (kısa kodun engellendiği ağlar için yedek yol).
-4. Çözümlenen adres `repo.json` olarak indirilir; `name`, `description` ve `pluginLists` alanları okunur, depo adı uygulamaya bu dosyadan yazılır.
-5. **Kayda alınan şey çözümlenmiş gerçek adrestir**; kısa kod yalnızca *ekleme anında* kullanılır. Sonraki açılışlarda ve güncellemelerde uygulama doğrudan `plugins.json`'ı çeker.
-6. Ardından `pluginLists` içindeki her adres `plugins.json` olarak indirilir, listelenen `.cs3` dosyaları indirilir ve **SHA-256 hash** ile doğrulanır. `version` değeri arttığında eklenti otomatik güncellenir.
-
-**Kendi kısa kodunuzu oluşturma:** [cutt.ly](https://cutt.ly) hesabında bu deponun `repo.json` adresini kısaltın, ardından kısaltma için istediğiniz özel takma adı (alias) verin. Ücretsiz planda **ayda 3 özel takma ad** hakkınız vardır; aynı depoya birden fazla kod tanımlanabilir.
-
-> **Not:** Bu depo için henüz kısa kod tanımlanmamıştır. Kod oluşturulana kadar yukarıdaki adres ile ekleyebilirsiniz.
-
----
-
 ## 🧩 Eklentiler
 
-| Eklenti | Tür | Kaynak |
-|---|---|---|
-| AsyaAnimeleri | Anime | asyaanimeleri.top |
-| BelgeselX | Documentary | belgeselx.com |
-| CanliTV | Live | m3u oynatma listesi |
-| Ddizi | TvSeries | www.ddizi.im |
-| DiziBox | TvSeries | www.dizibox.live |
-| Dizilla | TvSeries | dizilla.now |
-| DiziMom | TvSeries | www.dizimom.help |
-| DiziPal | TvSeries, Movie | dizipal1584.com |
-| DiziPalOriginal | TvSeries, Movie | dizipal2134.com |
-| DiziPod | TvSeries, Movie | dizipod.com |
-| DiziYou | TvSeries | www.diziyou.one |
-| FilmMakinesi | Movie | filmmakinesi.to |
-| FilmModu | Movie | www.filmmodu.one |
-| FullHDFilm | Movie, TvSeries | hdfilm.us |
-| FullHDFilmizlesene | Movie | www.fullhdfilmizlesene.now |
-| HDFilmCehennemi | Movie, TvSeries | www.hdfilmcehennemi.nl |
-| HDFilmDelisi | Movie, TvSeries | dinamik (uygulama ayarı) |
-| InatBox | Movie, TvSeries, Live | dinamik (uygulama ayarı) |
-| JetFilmizle | Movie | jetfilmizle.now |
-| RareFilmm | Movie | rarefilmm.com |
-| RecTV | Movie, Live, TvSeries | harici depo (patr0nq) |
-| SelcukFlix | Movie, TvSeries | selcukflix.com |
-| SetFilmIzle | Movie, TvSeries | www.setfilmizle.ltd |
-| SezonlukDizi | TvSeries | sezonlukdizi.cc |
-| SinemaCX | Movie | sinemacc.com |
-| Sinewix | Movie, TvSeries, Anime | ydfvfdizipanel.ru |
-| WebdramaTurkey2 | AsianDrama, Movie, Anime, Others | webdramaturkey2.com |
-| WebteIzle | Movie | webteizle.info |
-| YeniSite | Movie | **iskelet — test amaçlı** |
+| Eklenti | Tür |
+|---|---|
+| AsyaAnimeleri | Anime |
+| BelgeselX | Documentary |
+| CanliTV | Live |
+| Ddizi | TvSeries |
+| DiziBox | TvSeries |
+| Dizilla | TvSeries |
+| DiziMom | TvSeries |
+| DiziPal | TvSeries, Movie |
+| DiziPalOriginal | TvSeries, Movie |
+| DiziPod | TvSeries, Movie |
+| DiziYou | TvSeries |
+| FilmMakinesi | Movie |
+| FilmModu | Movie |
+| FullHDFilm | Movie, TvSeries |
+| FullHDFilmizlesene | Movie |
+| HDFilmCehennemi | Movie, TvSeries |
+| HDFilmDelisi | Movie, TvSeries |
+| InatBox | Movie, TvSeries, Live |
+| JetFilmizle | Movie |
+| RareFilmm | Movie |
+| RecTV | Movie, Live, TvSeries |
+| SelcukFlix | Movie, TvSeries |
+| SetFilmIzle | Movie, TvSeries |
+| SezonlukDizi | TvSeries |
+| SinemaCX | Movie |
+| Sinewix | Movie, TvSeries, Anime |
+| WebdramaTurkey2 | AsianDrama, Movie, Anime, Others |
+| WebteIzle | Movie |
+| YeniSite | Movie (iskelet) |
 
 ---
 
