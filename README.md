@@ -126,11 +126,19 @@ master'a push  →  GitHub Actions "CloudStream Derleyici"
 
 ## 🩺 Sağlam kontrolü
 
-Tüm eklentilerin `mainUrl` adreslerini canlı olarak denetler (eklenti kaynak kodunda alan adı değişmişse raporlar):
+Tüm yardımcı betikler `araclar/` klasöründedir:
+
+| Betik | Ne işe yarar |
+|---|---|
+| `araclar/SAGLIK.py` | Bütün eklentilerin `mainUrl` adreslerini canlı denetler — ek bağımlılık gerektirmez |
+| `araclar/KONTROL.py` | CI'ın kullandığı otomatik alan adı güncelleyici → `domain-degisikligi` branch'i + PR açar |
+| `araclar/*_bakalim.py` | Eklenti geliştirirken yazılmış video-linki çözümleme notları (derlemeye dahil değildir) |
+
+`SAGLIK.py` kullanım:
 
 ```bash
-python3 SAGLIK.py          # rapor
-python3 SAGLIK.py --apply  # mainUrl güncelle + version artır
+python3 araclar/SAGLIK.py          # rapor
+python3 araclar/SAGLIK.py --apply  # mainUrl güncelle + version artır
 ```
 
 ---

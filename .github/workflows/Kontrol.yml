@@ -44,7 +44,7 @@ jobs:
 
       - name : Betiği Çalıştır
         run  : |
-          python KONTROL.py
+          python araclar/KONTROL.py
 
       - name : Değişiklik Kontrolü
         id   : degisiklik_kontrol

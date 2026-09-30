@@ -1,6 +1,6 @@
-﻿"""Kekik deposundaki tum eklentilerin mainUrl'lerini kontrol eder.
+"""Kekik deposundaki tum eklentilerin mainUrl'lerini kontrol eder.
 
-KONTROL.py ile ayni isi yapar, cloudscraper/Kekik gerektirmez, ama cloudscraper/Kekik gerektirmez.
+KONTROL.py ile ayni isi yapar, cloudscraper/Kekik gerektirmez.
 Varsayilan mod: raporla (--apply ile mainUrl guncelleyip version artirir).
 """
 import os
@@ -11,7 +11,8 @@ import urllib.error
 import ssl
 from concurrent.futures import ThreadPoolExecutor
 
-BASE = os.path.dirname(os.path.abspath(__file__))
+# betik artik araclar/ icinde, depo kokunu bir ust dizinden al
+BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APPLY = "--apply" in sys.argv
 
 SKIP = {"gradle", "CanliTV", "OxAx", "__Temel", "SineWix", "YouTube",
