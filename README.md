@@ -25,13 +25,10 @@ Eklenti içeriği ve güncel durumları
     <td valign="top" style="padding-right: 40px;">
       <table>
         <tr><th>Platform Adı</th><th>Durum</th></tr>
-        <tr><td>AnimeciX</td><td>✅</td></tr>
         <tr><td>BelgeselX</td><td>✅</td></tr>
         <tr><td>CanliTV</td><td>✅</td></tr>
-        <tr><td>CizgiMax</td><td>✅</td></tr>
         <tr><td>Ddizi</td><td>✅</td></tr>
         <tr><td>DiziBox</td><td>✅</td></tr>
-        <tr><td>DiziKorea</td><td>✅</td></tr>
         <tr><td>DiziMom</td><td>✅</td></tr>
         <tr><td>DiziPal</td><td>✅</td></tr>
         <tr><td>DiziYou</td><td>✅</td></tr>
@@ -49,8 +46,6 @@ Eklenti içeriği ve güncel durumları
         <tr><th>Platform Adı</th><th>Durum</th></tr>
         <tr><td>InatBox</td><td>✅</td></tr>
         <tr><td>JetFilmizle</td><td>✅</td></tr>
-        <tr><td>KoreanTurk</td><td>✅</td></tr>
-        <tr><td>KultFilmler</td><td>✅</td></tr>
         <tr><td>NetflixMirror</td><td>✅</td></tr>
         <tr><td>RareFilmm</td><td>✅</td></tr>
         <tr><td>RecTV</td><td>✅</td></tr>
@@ -58,12 +53,7 @@ Eklenti içeriği ve güncel durumları
         <tr><td>SezonlukDizi</td><td>✅</td></tr>
         <tr><td>SinemaCX</td><td>✅</td></tr>
         <tr><td>SuperFilmGeldi</td><td>✅</td></tr>
-        <tr><td>TLCtr</td><td>✅</td></tr>
-        <tr><td>TRanimaci</td><td>✅</td></tr>
-        <tr><td>TrAsyaLog</td><td>✅</td></tr>
-        <tr><td>TurkAnime</td><td>✅</td></tr>
         <tr><td>UgurFilm</td><td>✅</td></tr>
-        <tr><td>Watch2Movies</td><td>✅</td></tr>
         <tr><td>WebteIzle</td><td>✅</td></tr>
       </table>
     </td>
