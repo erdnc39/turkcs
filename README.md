@@ -110,6 +110,7 @@ Tüm yardımcı betikler `araclar/` klasöründedir:
 | Betik | Ne işe yarar |
 |---|---|
 | `araclar/SAGLIK.py` | Bütün eklentilerin `mainUrl` adreslerini canlı denetler — ek bağımlılık gerektirmez |
+| `araclar/CANLI_TEST.py` | Eklentilerin `search()` katmanını canlı test eder: adresi ve seçiciyi **Kotlin kodundan okuyup** siteye gider, dönen sonuç sayısını verir (`pip install lxml cssselect`) |
 | `araclar/KONTROL.py` | CI'ın kullandığı otomatik alan adı güncelleyici → `domain-degisikligi` branch'i + PR açar |
 | `araclar/*_bakalim.py` | Eklenti geliştirirken yazılmış video-linki çözümleme notları (derlemeye dahil değildir) |
 
