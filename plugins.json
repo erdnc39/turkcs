@@ -1,0 +1,507 @@
+[
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/CanliTV.cs3",
+        "status": 1,
+        "version": 10,
+        "name": "CanliTV",
+        "internalName": "CanliTV",
+        "authors": [
+            "Adippe",
+            "keyiflerolsun"
+        ],
+        "description": "Canlı TV",
+        "fileSize": 20480,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Live"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=tr.canlitv.team&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-d4e8de61fd99275ecda7a2c1a53da5b1643cfa42e8f6bba0c32383b722de14db"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/Ddizi.cs3",
+        "status": 1,
+        "version": 22,
+        "name": "Ddizi",
+        "internalName": "Ddizi",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "DDizi.im için Cloudstream eklentisi",
+        "fileSize": 20110,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.ddizi.im/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-47e75d5eb583ed98fb54324a73028da5f35775e910f3e6a5e78cd00effa786a9"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/DiziBox.cs3",
+        "status": 1,
+        "version": 24,
+        "name": "DiziBox",
+        "internalName": "DiziBox",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "YabancÄ± Dizi izle, TÃ¼m yabancÄ± dizilerin yeni ve eski sezonlarÄ±nÄ± full hd izleyebileceÄŸiniz elit site.",
+        "fileSize": 31118,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.dizibox.live&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-8ba50bf9127f4255a5bbe7aedae35bb883eda2a0b010ca44fdd1017fedb95516"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/Dizilla.cs3",
+        "status": 1,
+        "version": 92,
+        "name": "Dizilla",
+        "internalName": "Dizilla",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Dizilla tüm yabancı dizileri ücretsiz olarak Türkçe Dublaj ve altyazılı seçenekleri ile 1080P kalite izleyebileceğiniz yeni nesil yabancı dizi izleme siteniz.",
+        "fileSize": 36123,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=dizilla.club&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-25a5164a8a92dece1f5993e4ddd7be8399f53c92ebf7448177712fa51b853827"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/DiziMom.cs3",
+        "status": 1,
+        "version": 63,
+        "name": "DiziMom",
+        "internalName": "DiziMom",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Binlerce yerli yabancÄ± dizi arÅŸivi, tÃ¼m sezonlar, kesintisiz bÃ¶lÃ¼mler. Sadece dizi izle, Dizimom heryerde seninle!",
+        "fileSize": 34839,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.dizimom.plus&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-30d12d5e89dee2cbb2f8145b656c82f5b0246c8ff991eb528c15df801e6fdf82"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/DiziPal.cs3",
+        "status": 1,
+        "version": 113,
+        "name": "DiziPal",
+        "internalName": "DiziPal",
+        "authors": [
+            "keyiflerolsun",
+            "muratcesmecioglu"
+        ],
+        "description": "en yeni dizileri gÃ¼venli ve hÄ±zlÄ± ÅŸekilde sunar.",
+        "fileSize": 27877,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://dizipal1563.com/assets/favicon/favicon-32x32.png?v=3",
+        "apiVersion": 1,
+        "fileHash": "sha256-649cd84dea0fb29731062be08a0e3a9e897ccf9bdc2279f147aeb28e4eb12733"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/DiziPalOriginal.cs3",
+        "status": 1,
+        "version": 106,
+        "name": "DiziPalOriginal",
+        "internalName": "DiziPalOriginal",
+        "authors": [
+            "keyiflerolsun",
+            "muratcesmecioglu"
+        ],
+        "description": "en yeni dizileri gÃ¼venli ve hÄ±zlÄ± ÅŸekilde sunar.",
+        "fileSize": 31829,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://chessplyimages.cfd/uploads/site/favicon-32x32.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-991f93449c61e9e4c64995a59ec74e6240ed82c4a24e6f5539984509e31d31cb"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/DiziPod.cs3",
+        "status": 1,
+        "version": 3,
+        "name": "DiziPod",
+        "internalName": "DiziPod",
+        "authors": [
+            "patr0n"
+        ],
+        "description": "Yabancı dizi ve film izleme platformu. Altyazılı yabancı dizi ve film izle.",
+        "fileSize": 23522,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries",
+            "Movie"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=dizipod.com&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-c4be7b192eec30ffc084f8df86e30f0ccc59270e58fe7dc99b989677963224f5"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/DiziYou.cs3",
+        "status": 1,
+        "version": 26,
+        "name": "DiziYou",
+        "internalName": "DiziYou",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Diziyou en kaliteli Türkçe dublaj ve altyazılı yabancı dizi izleme sitesidir. Güncel ve efsanevi dizileri 1080p Full HD kalitede izlemek için hemen tıkla!",
+        "fileSize": 15974,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "iconUrl": "https://cdn.diziyou.one/wp-content/uploads/2020/04/diziyou-favicon.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-5259d2d3443e93a0639c0407fc91c20f71cbad757408acaf31b4faf5ee8bab5b"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/FilmMakinesi.cs3",
+        "status": 1,
+        "version": 59,
+        "name": "FilmMakinesi",
+        "internalName": "FilmMakinesi",
+        "authors": [
+            "keyiflerolsun",
+            "usdogu"
+        ],
+        "description": "Film Makinesi, en yeni ve en güncel filmleri sitemizde full HD kalite farkı ile izleyebilirsiniz. HD film izle denildiğinde akla gelen en kaliteli film izleme sitesi.",
+        "fileSize": 32902,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=filmmakinesi.film&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-96c3e3784c270d960ab3207e618c3306214466a1f2225af66cd7c6fdb15b02ff"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/FilmModu.cs3",
+        "status": 1,
+        "version": 19,
+        "name": "FilmModu",
+        "internalName": "FilmModu",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Film modun geldiyse yüksek kalitede en yeni filmleri izle, 1080p izleyebileceğiniz reklamsiz film sitesi.",
+        "fileSize": 16496,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie"
+        ],
+        "iconUrl": "https://www.filmmodu.one/icon/favicon.ico",
+        "apiVersion": 1,
+        "fileHash": "sha256-3150a6212f052ad843a8b9e67d65c82b35078f502bb9f5032b1af808d87b862e"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/FullHDFilm.cs3",
+        "status": 1,
+        "version": 36,
+        "name": "FullHDFilm",
+        "internalName": "FullHDFilm",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Fullhdfilm ile en yeni vizyon filmler Full HD ve kesintisiz film sizlerle. Özgün film arşivimizle en üstün kaliteli film izle keyfini sunuyoruz.",
+        "fileSize": 28171,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=hdfilm.us&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-83de6f5e436bc671aef7925683ffa870a8f8264513d032e23e64b2d0d59515a4"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/FullHDFilmizlesene.cs3",
+        "status": 1,
+        "version": 33,
+        "name": "FullHDFilmizlesene",
+        "internalName": "FullHDFilmizlesene",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Sinema zevkini evinize kadar getirdik. Türkiye'nin lider Film sitesinde, en yeni filmleri Full HD izleyin.",
+        "fileSize": 40117,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.fullhdfilmizlesene.de&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-8f2cff5f9fc87f38d415b65c30c7ad3b7c9a5d26f03d8e73b072ff520b499253"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/HDFilmCehennemi.cs3",
+        "status": 1,
+        "version": 56,
+        "name": "HDFilmCehennemi",
+        "internalName": "HDFilmCehennemi",
+        "authors": [
+            "hexated",
+            "keyiflerolsun"
+        ],
+        "description": "Türkiye'nin en hızlı hd film izleme sitesi",
+        "fileSize": 46560,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=hdfilmcehennemi.com&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-18c4dcb9887b230574c0cfd88c882434616dce9a503e915599863e86c2ad7788"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/HDFilmDelisi.cs3",
+        "status": 1,
+        "version": 1,
+        "name": "HDFilmDelisi",
+        "internalName": "HDFilmDelisi",
+        "authors": [
+            "patr0n"
+        ],
+        "description": "HD Film Delisi - Türkçe Filmler",
+        "fileSize": 64395,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=hdfilmdelisi.com&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-20329159ede070b4f6535bb501c5d4276262247574f27ef9740cdf2ab7175a95"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/InatBox.cs3",
+        "status": 1,
+        "version": 38,
+        "name": "InatBox",
+        "internalName": "InatBox",
+        "authors": [
+            "JustRelaxable",
+            "keyiflerolsun"
+        ],
+        "description": "Ä°natBox cloudstream eklentisidir. SevdiÄŸiniz yayÄ±n platformlarÄ±nÄ± ve canlÄ± maÃ§larÄ± burada bulabilirsiniz.",
+        "fileSize": 41364,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Live"
+        ],
+        "iconUrl": "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh3vCp6N1K4bECoYRQD-cisJF2_6V_Hk01ZhDmoPR2JuM8O5qr4MqrPO1munM9cRlleBBSK6odYhLtDBWv4E3vhPhynlmS5hVVtJZShHoGA5REQ8_3v8SIlccTEqzVQu2UJyNYQdJNrKIfWy66RQeT0D-CcmFCbHPz5023H6p2v5fv4NVloZ5Rqo_yGrIY/s320/iNat-Box-App.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-525462bf4cd4b6ad685b357837ad27f5ec4aaedccb7bca365595fb8a8ce1879f"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/JetFilmizle.cs3",
+        "status": 1,
+        "version": 47,
+        "name": "JetFilmizle",
+        "internalName": "JetFilmizle",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Binlerce Film İzleme Seçeneğiyle En İyi Film İzleme Sitesi",
+        "fileSize": 18698,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=https://jetfilmizle.de&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-1472a4fd418b77e82a5f21a15d838bc8a0a6b4a9c8189611c53c07df3dc916b9"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/RecTV.cs3",
+        "status": 1,
+        "version": 116,
+        "name": "RecTV",
+        "internalName": "RecTV",
+        "authors": [
+            "keyiflerolsun",
+            "yusiqo",
+            "inatchii",
+            "JustRelaxable"
+        ],
+        "description": "RecTv APK, TÃ¼rkiyeâ€™deki en popÃ¼ler Ã‡evrimiÃ§i Medya AkÄ±ÅŸ platformlarÄ±ndan biridir. Filmlerin, CanlÄ± SporlarÄ±n, Web Dizilerinin ve Ã§ok daha fazlasÄ±nÄ±n keyfini Ã¼cretsiz Ã§Ä±karÄ±n.",
+        "fileSize": 30319,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie",
+            "Live",
+            "TvSeries"
+        ],
+        "iconUrl": "https://rectv.org.tr/wp-content/uploads/2024/11/rectv-modified.webp",
+        "apiVersion": 1,
+        "fileHash": "sha256-f449880e66ea230e8b937217aff36e93824e047d5e960bd0e80e11dfb56cce54"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/SelcukFlix.cs3",
+        "status": 1,
+        "version": 2,
+        "name": "SelcukFlix",
+        "internalName": "SelcukFlix",
+        "authors": [
+            "patr0n"
+        ],
+        "description": "SelcukFlix eklentisi.",
+        "fileSize": 33998,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://selcukflix.co/assets/favicon/favicon-32x32.png",
+        "apiVersion": 1,
+        "fileHash": "sha256-835fd32012016c56acc786a48b2188899708212995931e48d602ef3f0f808b20"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/SetFilmIzle.cs3",
+        "status": 1,
+        "version": 32,
+        "name": "SetFilmIzle",
+        "internalName": "SetFilmIzle",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Setfilmizle sitemizde, donma yaşamadan Türkçe dublaj ve altyazılı filmleri ile dizileri muhteşem 1080p full HD kalitesinde izleyebilirsiniz.",
+        "fileSize": 25096,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie",
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.setfilmizle.uk&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-23ec018dc44326b4fee742e2499ba8d42b4c0cac301e31f392b623499ba0a18a"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/SezonlukDizi.cs3",
+        "status": 1,
+        "version": 9,
+        "name": "SezonlukDizi",
+        "internalName": "SezonlukDizi",
+        "authors": [
+            "keyiflerolsun",
+            "JustRelaxable"
+        ],
+        "description": "Güncel ve eski dizileri en iyi görüntü kalitesiyle bulabileceğiniz yabancı dizi izleme siteniz.",
+        "fileSize": 21851,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=sezonlukdizi6.com&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-d20e1936290d33d0aa1ea07a262b371bcfcd866e56363cc2dcf1c1abd60eb91a"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/SinemaCX.cs3",
+        "status": 1,
+        "version": 25,
+        "name": "SinemaCX",
+        "internalName": "SinemaCX",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Güncel ve en iyi yabancı filmleri yüksek görüntü kalitesinde, Türkçe dublaj ve altyazı seçenekleriyle filmleri full izleyin.",
+        "fileSize": 16715,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=www.sinema.cx&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-72a8d8da386d48becd4dca4a49dd47f8cbe87d5178e88ecda1101a719dbb3566"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/Sinewix.cs3",
+        "status": 1,
+        "version": 2,
+        "name": "Sinewix",
+        "internalName": "Sinewix",
+        "authors": [
+            "patr0n",
+            "keyiflerolsun"
+        ],
+        "description": "Sinewix | Ücretsiz Film - Dizi - Anime İzleme Uygulaması",
+        "fileSize": 26760,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie",
+            "TvSeries",
+            "Anime"
+        ],
+        "iconUrl": "https://play-lh.googleusercontent.com/brwGNmr7IjA_MKk_TTPs0va10hdKE_bD_a1lnKoiMuCayW98EHpRv55edA6aEoJlmwfX",
+        "apiVersion": 1,
+        "fileHash": "sha256-b006775c37981e0b7ffd95ef11bc1c5dbf69504cbec8fe5928d8f41b005091f4"
+    },
+    {
+        "url": "https://raw.githubusercontent.com/erdnc39/turkcs/builds/WebteIzle.cs3",
+        "status": 1,
+        "version": 21,
+        "name": "WebteIzle",
+        "internalName": "WebteIzle",
+        "authors": [
+            "keyiflerolsun"
+        ],
+        "description": "Her türlü filmi ister dublaj ister altyazılı, en kaliteli bir şekilde izleyebileceğiniz arşivi en geniş gerçek film izleme siteniz.",
+        "fileSize": 24117,
+        "repositoryUrl": "https://github.com/erdnc39/turkcs",
+        "language": "tr",
+        "tvTypes": [
+            "Movie"
+        ],
+        "iconUrl": "https://www.google.com/s2/favicons?domain=webteizle3.xyz&sz=%size%",
+        "apiVersion": 1,
+        "fileHash": "sha256-c014c951be6263c0eea12449fa1ebf5b0cbd309bf7359afff7dc4f9720540d63"
+    }
+]
