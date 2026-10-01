@@ -72,13 +72,14 @@
 </div>
 
 <p class="kucuk">
-  <b>“Uygulama yüklenemedi”</b> hatası için sırayla dene:<br>
-  1) önce <b>arm64 (64-bit)</b>, olmazsa <b>armeabi (32-bit)</b> sürümü indir —
-  ucuz stick'ler çoğu zaman 32 bit;<br>
-  2) APK'yı <b>dosya yöneticisinden</b> aç (tarayıcının “Aç” düğmesi bazı TV'lerde çalışmaz);<br>
-  3) <b>Ayarlar → Uygulamalar → Güvenlik → Bilinmeyen kaynaklar</b> → indirme/dosya
-  uygulamasına izin ver;<br>
-  4) depolama dolu olmasın (Termux ~120 MB yer kaplar).
+  <b>“Uygulama yüklenemedi” hatası için sırayla dene:</b><br>
+  1) <b>TV'yi yeniden başlat</b> — yarım kalmış kurulum artığı kalabilir;<br>
+  2) <b>Download klasöründeki eski APK'ları sil</b> (öncekiler yarım inmiş olabilir);<br>
+  3) aşağıdaki <b>“YENİ LINK”</b> ile indir (önceki adres önbellekte kalmış olabilir);<br>
+  4) APK'yı <b>dosya yöneticisinden aç</b> (tarayıcının “Aç” düğmesi bazı TV'lerde sessizce düşer);<br>
+  5) <b>Ayarlar → Uygulamalar → Güvenlik → Bilinmeyen kaynaklar</b> izni + depolama boş mu (~120 MB);<br>
+  6) TV'de <b>Google Play</b> varsa Termux'u doğrudan oradan kur (APK indirmeye gerek kalmaz);<br>
+  7) hâlâ olmazsa <b>Plan B: OTG/USB</b> — hiçbir uygulama kurmadan adb açılır.
 </p>
 
 <div class="note" id="oneri" style="border-color:#30363d">
@@ -86,7 +87,8 @@
 </div>
 
 <a class="btn" href="/Termux-arm64.apk">⬇️ Termux — arm64 (64-bit, 35 MB)</a>
-<a class="btn" href="/Termux-armeabi.apk">⬇️ Termux — armeabi-v7a (32-bit, 32 MB)</a>
+<a class="btn" href="/Termux-64-b.apk">⬇️ Termux — arm64 <b>YENİ LINK</b> (önbellek kıran, 35 MB)</a>
+<a class="btn" href="/Termux-armeabi.apk">⬇️ Termux — armeabi-v7a (32-bit, 32 MB) — bu cihazda <u>çalışmaz</u></a>
 
 <p class="kucuk">Termux'u aç, aşağıdaki komutları <b>tek tek</b> yapıştır ve çalıştır.
 Sonuçlar bana otomatik gider.</p>

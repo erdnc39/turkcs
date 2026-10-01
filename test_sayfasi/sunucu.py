@@ -58,7 +58,30 @@ class El(BaseHTTPRequestHandler):
         elif fp.endswith(".js"):
             tip = "application/javascript"
         with open(fp, "rb") as f:
-            self._gonder(200, f.read(), tip)
+            veri = f.read()
+
+        # TV indiricileri bolumlu (Range) istek atar; desteklenmezse dosya yarim kalir
+        rng = self.headers.get("Range")
+        if rng and rng.startswith("bytes="):
+            try:
+                p = rng[6:].split(",")[0].split("-")
+                bas = int(p[0]) if p[0] else 0
+                son = int(p[1]) if len(p) > 1 and p[1] else len(veri) - 1
+                son = min(son, len(veri) - 1)
+                if bas <= son:
+                    parca = veri[bas:son + 1]
+                    self.send_response(206)
+                    self.send_header("Content-Type", tip)
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Content-Range", "bytes %d-%d/%d" % (bas, son, len(veri)))
+                    self.send_header("Content-Length", str(len(parca)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(parca)
+                    return
+            except Exception:
+                pass
+        self._gonder(200, veri, tip)
 
     def do_HEAD(self):
         # indiriciler dosyayi once HEAD ile sorar
