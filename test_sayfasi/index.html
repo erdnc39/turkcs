@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TurkCS — Cloudstream Kurulum / Test</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0e1116; color:#e6edf3;
+         margin:0; padding:24px; max-width:760px; margin-inline:auto; }
+  h1 { font-size:1.4rem; } h2 { font-size:1.05rem; margin-top:2rem; color:#79c0ff; }
+  a.btn { display:block; margin:14px 0; padding:18px 20px; border-radius:12px;
+          background:#1f6feb; color:#fff; text-decoration:none; font-size:1.15rem;
+          text-align:center; }
+  a.btn.alt { background:#238636; }
+  a.btn.ghost { background:#21262d; border:1px solid #30363d; font-size:1rem; }
+  .note { background:#161b22; border:1px solid #30363d; border-radius:10px;
+          padding:14px 16px; line-height:1.6; font-size:.95rem; }
+  code { background:#21262d; padding:2px 6px; border-radius:6px; word-break:break-all; }
+  ol { line-height:1.9; }
+</style>
+</head>
+<body>
+
+<h1>☁️ TurkCS — TV üzerinde kurulum & test</h1>
+
+<h2>1) Cloudstream APK kurulu değilse</h2>
+<a class="btn" href="/Cloudstream-prerelease.apk">⬇️ Cloudstream (pre-release) APK indir</a>
+<div class="note">
+  İndirdikten sonra dosyayı açıp <b>“Bilinmeyen kaynaklara izin ver”</b> seçin.<br>
+  APK 75&nbsp;MB, LAN üzerinden geldiği için hızlı iner.
+</div>
+
+<h2>2) Depoyu ekle (tek tık)</h2>
+<a class="btn alt"
+   href="cloudstreamrepo://raw.githubusercontent.com/erdnc39/turkcs/refs/heads/builds/repo.json">
+   ➕ TurkCS deposunu ekle
+</a>
+<div class="note">
+  Bu bağlantı <code>cloudstreamrepo://</code> protokolünü kullanır; Cloudstream açılır ve
+  depoyu <b>otomatik</b> kaydeder (dialog çıkmaz). 29 eklenti listelenecektir.
+</div>
+
+<h2>3) Sadece adresi kopyalamak istersen</h2>
+<a class="btn ghost" href="https://raw.githubusercontent.com/erdnc39/turkcs/builds/repo.json">
+   repo.json adresini aç
+</a>
+<div class="note">
+  Uygulamada: <b>Ayarlar → Eklentiler → Depo ekle</b> alanına yapıştırın:<br>
+  <code>https://raw.githubusercontent.com/erdnc39/turkcs/builds/repo.json</code>
+</div>
+
+<h2>Durum</h2>
+<div class="note">
+  Bu sayfa <b>192.168.1.100</b> üzerindeki yerel test sunucusundan yayınlanıyor.<br>
+  ADB gerekmez: depo ekleme ve APK kurulumu tarayıcı üzerinden tamamlanır.
+</div>
+
+</body>
+</html>

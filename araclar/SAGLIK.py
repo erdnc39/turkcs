@@ -8,7 +8,10 @@ import re
 import sys
 import urllib.request
 import urllib.error
+import json
+import socket
 import ssl
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 
 # betik artik araclar/ icinde, depo kokunu bir ust dizinden al
@@ -19,7 +22,37 @@ SKIP = {"gradle", "CanliTV", "OxAx", "__Temel", "SineWix", "YouTube",
         "NetflixMirror", "HQPorner", "YeniSite", "build", ".github"}
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+      "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+
+# Tarayici benzeri basliklar: eksik baslikla 403/baganti-kesimi alinir,
+# siteyi "olu" gosterir. Basliklari tamamlayinca cogu 403 kaybolur.
+HEADERS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
+    "Accept-Encoding": "identity",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+}
+
+
+def dns_dogrula(host):
+    """Host cozuluyor mu? 'yerel', 'bulut' ya da None dondurur."""
+    try:
+        socket.gethostbyname(host)
+        return "yerel"
+    except Exception:
+        pass
+    try:
+        j = json.loads(urllib.request.urlopen(
+            "https://dns.google/resolve?name=%s&type=A" % host, timeout=15).read())
+        if [a for a in j.get("Answer", []) if a.get("type") == 1]:
+            return "bulut"
+    except Exception:
+        return None
+    return None
 
 
 def kt_dosyasi(dizin):
@@ -59,7 +92,9 @@ def kontrol(eklenti, mainurl):
     if not mainurl.startswith("http"):
         sonuc["durum"] = "ATLANDI (non-http)"
         return sonuc
-    istek = urllib.request.Request(mainurl, headers={"User-Agent": UA})
+
+    host = urlparse(mainurl).netloc
+    istek = urllib.request.Request(mainurl, headers=HEADERS)
     ctx = ssl.create_default_context()
     try:
         with urllib.request.urlopen(istek, timeout=20, context=ctx) as r:
@@ -68,17 +103,36 @@ def kontrol(eklenti, mainurl):
     except urllib.error.HTTPError as e:
         sonuc["kod"] = e.code
         sonuc["final"] = e.geturl() or mainurl
+        # 401/403/429/503 = site ayakta ama bizi engelliyor -> alan adi GUNCEL
+        if e.code in (401, 403, 429, 503):
+            sonuc["durum"] = f"ERISIM ENGELI (HTTP {e.code}) -> alan adi GUNCEL, bot/koruma"
+            sonuc["engel"] = True
+            return sonuc
         sonuc["durum"] = f"HTTP {e.code}"
+        return sonuc
     except Exception as e:
-        sonuc["durum"] = f"HATA: {type(e).__name__}: {e}"
+        kanit = dns_dogrula(host)
+        if kanit:
+            # DNS cozuluyor -> domain tasinmamis; bagantiyi/ag engelliyor
+            sonuc["durum"] = (f"BAGANTI KESILDI ({type(e).__name__}) -> alan adi {kanit} DNS ile "
+                              f"cozuluyor, erisim ag tarafindan engellenmis")
+            sonuc["engel"] = True
+        else:
+            sonuc["durum"] = f"ALAN ADI OLU: DNS hic cozulmuyor ({type(e).__name__})"
+            sonuc["olu"] = True
         return sonuc
 
     son = sonuc["final"].rstrip("/")
+    # Cloudflare Access / login kapisina yonlendirme = domain degisikligi DEGILDIR
+    if "cloudflareaccess.com" in sonuc["final"] or "/cdn-cgi/access/login" in sonuc["final"]:
+        sonuc["durum"] = "KAPI (Cloudflare Access login) -> alan adi GUNCEL, guncelleme YAPMA"
+        sonuc["engel"] = True
+        return sonuc
     if son == mainurl.rstrip("/"):
         sonuc.setdefault("durum", "OK")
         sonuc["degisti"] = False
     else:
-        sonuc.setdefault("durum", "OK (yÃ¶nlendirildi)")
+        sonuc.setdefault("durum", "OK (yönlendirildi)")
         sonuc["degisti"] = True
     return sonuc
 
@@ -118,10 +172,14 @@ def main():
     with ThreadPoolExecutor(max_workers=10) as havuz:
         sonuclar = list(havuz.map(lambda x: kontrol(x[0], x[2]), isler))
 
-    degisenler, hatalilar, atlanan, sorunsuz = [], [], [], 0
+    degisenler, hatalilar, atlanan, engelli, oluler, sorunsuz = [], [], [], [], [], 0
     for s, (d, kt, _) in zip(sonuclar, isler):
         if s.get("degisti"):
             degisenler.append((d, s))
+        elif s.get("engel"):
+            engelli.append((d, s))
+        elif s.get("olu"):
+            oluler.append((d, s))
         elif s["durum"].startswith("OK"):
             sorunsuz += 1
         elif s["durum"].startswith("ATLANDI"):
@@ -130,7 +188,8 @@ def main():
             hatalilar.append((d, s))
 
     print("=" * 78)
-    print(f"SORUNSUZ: {sorunsuz}   |   YONLENDIRILEN: {len(degisenler)}   |   "
+    print(f"SORUNSUZ: {sorunsuz}   |   GUNCELLEME GEREKEN: {len(degisenler)}   |   "
+          f"ERISIM ENGELI: {len(engelli)}   |   OLU ALAN ADI: {len(oluler)}   |   "
           f"HATALI: {len(hatalilar)}   |   ATLANAN: {len(atlanan)}")
     print("=" * 78)
 
@@ -144,6 +203,18 @@ def main():
         for d, s in degisenler:
             print(f"  {d:20} {s['mainurl']}")
             print(f"  {'':20} -> {s['final']}   [{s.get('kod', '?')}]")
+
+    if engelli:
+        print("\n### ERISIM ENGELI - GUNCELLEME GEREKMEZ (alan adi dogru, site bizi engelliyor) ###")
+        for d, s in engelli:
+            print(f"  {d:20} {s['mainurl']}")
+            print(f"  {'':20} {s['durum']}")
+
+    if oluler:
+        print("\n### OLU ALAN ADI - GERCEK SORUN, INCELEME GEREKIR ###")
+        for d, s in oluler:
+            print(f"  {d:20} {s['mainurl']}")
+            print(f"  {'':20} {s['durum']}")
 
     if hatalilar:
         print("\n### ERISILEMEYEN ###")

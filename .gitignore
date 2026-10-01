@@ -10,3 +10,7 @@
 .cxx
 local.properties
 .vscode
+
+# yerel test sunucusu agirladigi icin APK repoya girmez
+*.apk
+.py
