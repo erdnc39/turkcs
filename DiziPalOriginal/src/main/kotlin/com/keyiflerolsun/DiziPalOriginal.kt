@@ -61,6 +61,8 @@ class DiziPalOriginal : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
+        // * Sitenin "Güncel Bölümler" bolumu (Tumunu Gor -> bu sayfa)
+        "${mainUrl}/yeni-eklenen-dizi-bolumler"     to "Son Bölümler",
         "${mainUrl}/yabanci-dizi-izle"                 to "Yeni Diziler",
         "${mainUrl}/hd-film-izle"                                  to "Yeni Filmler",
         "${mainUrl}/kanal/netflix"                                 to "Netflix",
@@ -117,7 +119,10 @@ class DiziPalOriginal : MainAPI() {
 
         // 1. HTML içindeki mevcut dizileri al
         if (!request.data.contains("/kanal/") || page == 1) {
-            if (request.data.contains("/yabanci-dizi-izle") || request.data.contains("/hd-film-izle")) {
+            if (request.data.contains("/yeni-eklenen-dizi-bolumler")) {
+                // * Yeni eklenen bolumler sayfasi farkli kart yapisi kullanir
+                home.addAll(document.select("a[href*=bolum]").mapNotNull { it.yeniBolumKarti() })
+            } else if (request.data.contains("/yabanci-dizi-izle") || request.data.contains("/hd-film-izle")) {
                 home.addAll(document.select("div.new-added-list div.bg-\\[\\#22232a\\]").mapNotNull { it.sonBolumler() })
             } else {
                 home.addAll(document.select("div.bg-\\[\\#22232a\\]").mapNotNull { it.diziler() })
@@ -170,8 +175,9 @@ class DiziPalOriginal : MainAPI() {
             }
         }
 
-        // Eğer sonuç geldiyse bir sonraki sayfa vardır diyelim
-        return newHomePageResponse(request.name, home, hasNext = home.isNotEmpty())
+        // Son bolumler sayfasinda sayfalama calismiyor (?sayfa= ayni icerigi dondurur) -> sonsuz dongu olmasin
+        val hasNext = !request.data.contains("/yeni-eklenen-dizi-bolumler")
+        return newHomePageResponse(request.name, home, hasNext = hasNext && home.isNotEmpty())
     }
 
     private fun Element.sonBolumler(): SearchResponse? {
@@ -186,6 +192,27 @@ class DiziPalOriginal : MainAPI() {
         return newTvSeriesSearchResponse(title, href.substringBefore("/sezon"), TvType.TvSeries) {
             this.posterUrl = posterUrl
         }
+    }
+
+    // * /yeni-eklenen-dizi-bolumler kartlari: <a href="/bolum/slug-1x5" class="... bg-[#1d1d1d]">
+    // * Seri adresi /bolum/ -> /series/ + "-1x5" son eki kaldirilarak uretilir (3/3 dogrulandi)
+    private fun Element.yeniBolumKarti(): SearchResponse? {
+        val rawHref = this.attr("href").ifBlank { this.selectFirst("a")?.attr("href") ?: "" }
+        val href    = fixUrlNull(rawHref) ?: return null
+        if (!href.contains("/bolum/")) return null
+
+        val seri = href.replace("/bolum/", "/series/").replace(Regex("""-\d+x\d+$"""), "")
+
+        val img       = this.selectFirst("img")
+        val title     = img?.attr("alt")?.trim()?.ifBlank { null } ?: return null
+        val srcSet    = img.attr("data-srcset").substringBefore(" ").trim()
+        val posterRaw = if (srcSet.isNotEmpty()) srcSet else img.attr("data-src")
+        val posterUrl = fixUrlNull(posterRaw)
+
+        val bolumEtiket = Regex("""(\d+)x(\d+)""").find(href)?.value
+        val ad = if (bolumEtiket != null) "$title $bolumEtiket" else title
+
+        return newTvSeriesSearchResponse(ad, seri, TvType.TvSeries) { this.posterUrl = posterUrl }
     }
 
     private fun Element.diziler(): SearchResponse? {
