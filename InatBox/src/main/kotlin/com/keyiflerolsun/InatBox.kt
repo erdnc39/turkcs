@@ -30,8 +30,11 @@ import okhttp3.Interceptor
 import org.json.JSONArray
 import java.net.URI
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 import javax.crypto.spec.IvParameterSpec
+import java.security.MessageDigest
+import java.security.SecureRandom
 import android.util.Base64
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import okhttp3.MediaType.Companion.toMediaType
@@ -40,7 +43,8 @@ import org.json.JSONException
 import org.json.JSONObject
 
 class InatBox : MainAPI() {
-    private val contentUrl = "https://diziboxen.help/CDN/001/002/dizibox"
+    // * 2026: yollar /v2 altina tasinmis + istekler HMAC-SHA256 ile imzalanmak zorunda
+    private val contentUrl = "https://diziboxen.help/CDN/001/002/dizibox/v2"
 
     override var name = "InatBox"
     override val hasMainPage = true
@@ -51,6 +55,11 @@ class InatBox : MainAPI() {
 
     private val urlToSearchResponse = mutableMapOf<String, SearchResponse>()
     private val aesKey = "ywevqtjrurkwtqgz" //Master secret and iv key
+
+    // * 2026: istek imzalama anahtari (HMAC-SHA256) ve sunucu saat ofseti
+    private val signingKey = "x7kkk0qmqz63kj68tla5i7u26192v7zqnnddhjgm"
+    private var timeOffset = 0L
+    private val secureRandom = SecureRandom()
 
     override val mainPage = mainPageOf(
         "${contentUrl}/tv/list1.php"              to "Spor ve Kanallar",
@@ -443,16 +452,8 @@ class InatBox : MainAPI() {
             return null
         }
 
-        val headers = mapOf(
-            "Cache-Control" to "no-cache",
-            "Content-Length" to "37",
-            "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
-            "Host" to hostName,
-            "Referer" to "https://speedrestapi.com/",
-            "X-Requested-With" to "com.bp.box"
-        )
-
         val requestBody = "1=${aesKey}&0=${aesKey}"
+        val path = URI(url).path
 
         val interceptor = Interceptor { chain ->
             val request = chain.request()
@@ -460,21 +461,62 @@ class InatBox : MainAPI() {
             chain.proceed(newRequest)
         }
 
-        val response = app.post(
-            url = url,
-            headers = headers,
-            requestBody = requestBody.toRequestBody(contentType = "application/x-www-form-urlencoded; charset=UTF-8".toMediaType()),
-            interceptor = interceptor
-        )
+        // * 2026: artik imzali istek gerekiyor (imzasiz -> 403 "Content could not load")
+        // * 1. deneme guncel ofsetle; 403 gelirse govdedeki x-st (sunucu saati) ile ofsetleyip tekrar dener
+        repeat(2) { deneme ->
+            val nonce = ByteArray(16).also { secureRandom.nextBytes(it) }
+                .joinToString("") { "%02x".format(it) }
+            val ts = (System.currentTimeMillis() / 1000 + timeOffset).toString()
+            val imza = imzala(path, ts, nonce, requestBody)
 
-        if (response.isSuccessful) {
-            val encryptedResponse = response.body.string()
-            // Log.d("InatBox", "Encrypted response: ${encryptedResponse}")
-            return getJsonFromEncryptedInatResponse(encryptedResponse)
-        } else {
-            Log.e("InatBox", "Request failed")
+            val headers = mapOf(
+                "Cache-Control" to "no-cache",
+                "Content-Length" to "37",
+                "Content-Type" to "application/x-www-form-urlencoded; charset=UTF-8",
+                "Host" to hostName,
+                "Referer" to "https://speedrestapi.com/",
+                "X-Requested-With" to "com.bp.box",
+                "X-Ts" to ts,
+                "X-Nc" to nonce,
+                "X-Sg" to imza
+            )
+
+            val response = app.post(
+                url = url,
+                headers = headers,
+                requestBody = requestBody.toRequestBody(contentType = "application/x-www-form-urlencoded; charset=UTF-8".toMediaType()),
+                interceptor = interceptor
+            )
+
+            if (response.isSuccessful) {
+                val encryptedResponse = response.body.string()
+                return getJsonFromEncryptedInatResponse(encryptedResponse)
+            }
+
+            val serverTime = response.headers["x-st"]?.toLongOrNull()
+            if (serverTime != null && deneme == 0) {
+                timeOffset = serverTime - System.currentTimeMillis() / 1000
+                Log.d("InatBox", "Saat ofseti guncellendi: $timeOffset sn -> tekrar denenecek")
+                return@repeat
+            }
+
+            Log.e("InatBox", "Request failed: HTTP ${response.code}")
             return null
         }
+
+        Log.e("InatBox", "Request failed after retry")
+        return null
+    }
+
+    // * canonical = "POST\n<path>\n<ts>\n<nonce>\n<sha256(body)>" -> HMAC-SHA256(signingKey)
+    private fun imzala(path: String, ts: String, nonce: String, body: String): String {
+        val bodyHash = MessageDigest.getInstance("SHA-256")
+            .digest(body.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val canonical = "POST\n$path\n$ts\n$nonce\n$bodyHash"
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(signingKey.toByteArray(), "HmacSHA256"))
+        return mac.doFinal(canonical.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
     private fun getJsonFromEncryptedInatResponse(response: String): String? {
