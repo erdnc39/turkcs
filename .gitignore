@@ -14,3 +14,6 @@ local.properties
 # yerel test sunucusu agirladigi icin APK repoya girmez
 *.apk
 .py
+
+# test sunucusu artiklari
+test_sayfasi/_*.txt
