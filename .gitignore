@@ -17,3 +17,6 @@ local.properties
 
 # test sunucusu artiklari
 test_sayfasi/_*.txt
+*.jks
+*.idsig
+test_sayfasi/apk_deneme/base.apk
