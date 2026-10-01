@@ -1,9 +1,9 @@
-version = 23
+﻿version = 24
 
 cloudstream {
     authors     = listOf("keyiflerolsun")
     language    = "tr"
-    description = "Yabancı Dizi izle, Tüm yabancı dizilerin yeni ve eski sezonlarını full hd izleyebileceğiniz elit site."
+    description = "YabancÄ± Dizi izle, TÃ¼m yabancÄ± dizilerin yeni ve eski sezonlarÄ±nÄ± full hd izleyebileceÄŸiniz elit site."
 
     /**
      * Status int as the following:

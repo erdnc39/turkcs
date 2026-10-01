@@ -119,15 +119,20 @@ class DiziBox : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url      = "$mainUrl/wp-admin/admin-ajax.php?s=$query&action=dwls_search"
-        val response = app.get(
-            url,
-            headers     = mapOf(
-                "X-Requested-With" to "XMLHttpRequest",
-                "Referer"          to "$mainUrl/?s=$query"
-            ),
-            cookies     = baseCookies,
-            interceptor = interceptor
-        )
+        // * Site tarafinda arama ucu su an zaman asimi / HTTP 520 donduruyor -> uygulama carpmasin
+        val response = try {
+            app.get(
+                url,
+                headers     = mapOf(
+                    "X-Requested-With" to "XMLHttpRequest",
+                    "Referer"          to "$mainUrl/?s=$query"
+                ),
+                cookies     = baseCookies,
+                interceptor = interceptor
+            )
+        } catch (e: Exception) {
+            return emptyList()
+        }
         if (!response.isSuccessful) return emptyList()
 
         val json = tryParseJson<SearchApiResponse>(response.text) ?: return emptyList()
@@ -236,15 +241,33 @@ class DiziBox : MainAPI() {
             interceptor = interceptor
         ).document
 
-        val iframeUrl = document.selectFirst("div#video-area iframe")?.attr("src")
-            ?: return false
+        // * Klasik yol: sayfadaki <div id="video-area"><iframe ...>
+        val videoAreaIframe = document.selectFirst("div#video-area iframe")?.attr("src")
+
+        // * Yedek: video-area kaldirilmis sayfalarda fragman HARICI herhangi bir iframe
+        val digerIframe = document.select("iframe").map { it.attr("src") }.firstOrNull { src ->
+            src.isNotBlank() && !src.contains("youtube.com") && !src.contains("youtu.be")
+                    && !src.contains("trailer") && !src.contains("fragman")
+        }
+
+        val baslangicIframe = videoAreaIframe ?: digerIframe
+        if (baslangicIframe == null) {
+            // kaynak yok (orn. sayfada sadece youtube fragmani var)
+            return false
+        }
 
         val sources = mutableListOf(data)
-        document.select("div.video-toolbar option[value]").forEach { opt ->
-            val valUrl = opt.attr("value")
-            if (!valUrl.startsWith("http") && !sources.contains(valUrl)) {
-                sources.add(valUrl)
+        if (videoAreaIframe != null) {
+            document.select("div.video-toolbar option[value]").forEach { opt ->
+                val valUrl = opt.attr("value")
+                if (!valUrl.startsWith("http") && !sources.contains(valUrl)) {
+                    sources.add(valUrl)
+                }
             }
+        } else {
+            // video-area yoksa ek kaynak secenekleri de yoktur -> dogrudan iframe'i isle
+            processIframe(baslangicIframe, data, data, subtitleCallback, callback)
+            return true
         }
 
         sources.forEach { sourceUrl ->
