@@ -87,8 +87,11 @@
 <p class="kucuk">Termux'u aç, aşağıdaki komutları <b>tek tek</b> yapıştır ve çalıştır.
 Sonuçlar bana otomatik gider.</p>
 
+<button class="btn alt" data-k="k0">⓿ Önce bunu: bağlantı testi — kopyala</button>
+<textarea id="k0" readonly rows="3" style="width:100%;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:.78rem;">echo "BASLADI"; command -v curl >/dev/null 2>&1 || pkg install -y curl &gt;/dev/null 2&gt;&amp;1; curl -sS -m 10 -X POST --data-binary "TERMUX-BAGLANTI-TESTI" http://192.168.1.100:8000/sonuc &amp;&amp; echo "OK-GONDERILDI" || echo "HATA-CURL"</textarea>
+
 <button class="btn alt" data-k="k1">① Cihaz bilgisi + root kontrolü — kopyala</button>
-<textarea id="k1" readonly rows="6" style="width:100%;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:.78rem;">pkg install -y curl >/dev/null 2>&1; { echo "## CIHAZ"; getprop ro.build.version.release; getprop ro.build.display.id; getprop ro.build.version.sdk; getprop ro.product.model; getprop ro.product.cpu.abi; echo "## ROOT"; command -v su || echo "su yok"; su -c id 2>&1 | head -1; echo "## PAKET"; pm list packages 2>/dev/null | grep -Ei "cloudstream|termux"; echo "## CS3"; dumpsys package com.lagradost.cloudstream3 2>&1 | grep -E "versionName|versionCode" | head -4; } 2>&1 | curl -s -X POST --data-binary @- http://192.168.1.100:8000/sonuc; echo GONDERILDI</textarea>
+<textarea id="k1" readonly rows="8" style="width:100%;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:.78rem;">echo "BASLADI"; command -v curl >/dev/null 2>&1 || pkg install -y curl >/dev/null 2>&1; { echo "## CIHAZ"; getprop ro.build.version.release; getprop ro.build.display.id; getprop ro.build.version.sdk; getprop ro.product.model; getprop ro.product.cpu.abi; getprop ro.product.cpu.abilist; getprop ro.build.hardware; echo "## ROOT"; command -v su || echo "su-yok"; su -c id 2>&amp;1 | head -1; echo "## PAKET"; pm list packages 2>/dev/null | grep -Ei "cloudstream|termux"; echo "## CS3"; dumpsys package com.lagradost.cloudstream3 2>&amp;1 | grep -E "versionName|versionCode" | head -4; } > /sdcard/tanilama.txt 2>&amp;1; echo "--- CIKTI ---"; cat /sdcard/tanilama.txt; echo "--- GONDERILIYOR ---"; curl -sS -m 15 -X POST --data-binary @/sdcard/tanilama.txt http://192.168.1.100:8000/sonuc &amp;&amp; echo "OK-GONDERILDI" || echo "HATA-CURL (cikti /sdcard/tanilama.txt icinde, elle gonder)"</textarea>
 
 <button class="btn alt" data-k="k2">② Root varsa ADB'yi ağ aç (tek satır) — kopyala</button>
 <textarea id="k2" readonly rows="3" style="width:100%;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:.78rem;">su -c "setprop service.adb.tcp.port 5555; stop adbd; start adbd" &amp;&amp; echo ADB-5555-ACIK</textarea>
@@ -97,9 +100,16 @@ Sonuçlar bana otomatik gider.</p>
 <textarea id="k3" readonly rows="4" style="width:100%;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:10px;font-size:.78rem;">while true; do k=$(curl -s http://192.168.1.100:8000/komut); if [ "$k" != "bos" ] &amp;&amp; [ -n "$k" ]; then { su -c "$k" 2&gt;/dev/null || eval "$k"; } 2&gt;&amp;1 | curl -s -X POST --data-binary @- http://192.168.1.100:8000/sonuc; fi; sleep 4; done</textarea>
 
 <div class="note kucuk">
-  <b>Root yoksa:</b> ①'yi yine çalıştır — gerçek Android sürümünü ve yapı numarasını
-  (<code>ro.build.display.id</code>) görmüş olurum. O zaman <b>USB/OTG</b> yolu konuşuruz:
-  stick'i OTG kabloyla bilgisayara tak → ben <code>adb tcpip 5555</code> derim → kablo çıkar, ağdan bağlanırım.<br>
+  <b>Komut ekranda ne görmeli?</b><br>
+  ⓿ → <code>BASLADI</code> … <code>OK-GONDERILDI</code> yazmalı (bende dosya belirir).<br>
+  <code>HATA-CURL</code> yazarsa: Termux ağa çıkamıyor demektir —
+  <code>ping 192.168.1.100</code> ile dene ya da Termux'a <code>pkg install curl</code> de.<br>
+  Hiçbir şey yazmazsa: komut panodan bozuk kopyalanmıştır — textarea içindeki metni
+  <b>elle seç-kopyala</b>.<br><br>
+  <b>Root yoksa:</b> ①'yi yine çalıştır — gerçek Android sürümü, yapı numarası
+  (<code>ro.build.display.id</code>) ve <b>ABI listesi</b> (<code>ro.product.cpu.abilist</code>)
+  ortaya çıkar. O zaman <b>USB/OTG</b> yolu konuşuruz: stick'i OTG kabloyla bilgisayara tak →
+  ben <code>adb tcpip 5555</code> derim → kablo çıkar, ağdan bağlanırım.<br>
   <b>Not:</b> “Sürüm 14 / yapı 10Q” gibi görünen değerler çoğu ucuz stick'te
   <b>uydurmadır</b> — asıl sürümü ① çıktısı söyler.
 </div>
