@@ -10,6 +10,7 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
@@ -276,7 +277,13 @@ class DiziPalOriginal : MainAPI() {
 
         val poster      = document.selectFirst("div.page-top img[alt]")?.attr("src")
         val year        = document.selectXpath("//div[text()='Yıl']//following-sibling::div").text().trim().toIntOrNull()
-        val description = document.selectFirst("div.summary p")?.text()?.trim()
+        // * Konu: sayfada <p class="text-white text-base ..."> icinde duruyor (eski "div.summary p" yok)
+        val description = document.selectFirst("p.text-white.text-base")?.text()?.trim()
+            ?: document.selectFirst("meta[name=description]")?.attr("content")?.trim()?.ifBlank { null }
+            ?: document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
+        // * IMDB puani: <div class="key">IMDB Puani</div><div class="value">7.9</div>
+        val score       = document.selectXpath("//div[text()='IMDB Puanı']/following-sibling::div")
+            .text().trim().ifBlank { null }?.let { Score.from10(it) }
         val tags        = document.selectXpath("//div[text()='Kategoriler']//following-sibling::div").text().trim().split(" ").map { it.trim() }
         val duration    = Regex("(\\d+)").find(document.selectXpath("//div[text()='Süre']//following-sibling::div").text())?.value?.toIntOrNull()
 
@@ -310,6 +317,7 @@ class DiziPalOriginal : MainAPI() {
                 this.plot      = description
                 this.tags      = tags
                 this.duration  = duration
+                this.score     = score   // * afisteki IMDB puani (yeni surumde gorunur)
             }
         } else { 
             val title = document.selectXpath("//div[@class='g-title'][2]/div").text().trim()
@@ -320,6 +328,7 @@ class DiziPalOriginal : MainAPI() {
                 this.plot      = description
                 this.tags      = tags
                 this.duration  = duration
+                this.score     = score   // * afisteki IMDB puani (yeni surumde gorunur)
             }
         }
     }

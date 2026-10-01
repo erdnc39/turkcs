@@ -188,6 +188,9 @@ class DiziPal : MainAPI() {
     // .info-row içindeki span yapısından veriyi çekiyoruz
     val year = document.selectFirst("div.info-row:contains(Yıl) span.info-value")?.text()?.trim()?.toIntOrNull()
     val description = document.selectFirst("p.series-description")?.text()?.trim()
+    // * IMDB puani: <div class="info-row"><span class="info-label">IMDB</span><span class="info-value">8.7</span>
+    val score = document.selectFirst("div.info-row:contains(IMDB) span.info-value")?.text()?.trim()
+        ?.let { Score.from10(it) }
     
     // "Kategoriler" altındaki tüm <a> tag'lerini çekip listeye çeviriyoruz
     val tags = document.select("div.info-row:contains(Kategoriler) span.info-value.categories a").map { it.text().trim() }
@@ -226,6 +229,7 @@ class DiziPal : MainAPI() {
             this.plot      = description
             this.tags      = tags
             this.duration  = duration
+            this.score     = score   // * afisteki IMDB puani
         }
     } else {
         // Film detay sayfası HTML'i elimizde olmadığı için en olası selector'ları fallback ile yazdım.
@@ -242,6 +246,7 @@ class DiziPal : MainAPI() {
             this.plot      = description
             this.tags      = tags
             this.duration  = duration
+            this.score     = score   // * afisteki IMDB puani
         }
     }
 }
