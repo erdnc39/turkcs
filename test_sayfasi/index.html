@@ -155,8 +155,8 @@ document.getElementById('kopyala').addEventListener('click', kopyala);
 
 // cihaz bilgisi paneli
 (function () {
+ try {
   const ua = navigator.userAgent;
-  const android = (ua.match(/Android\s([\d.]+)/) || [])[1] ? '?';
   const satirlar = [];
   satirlar.push('UA: <code>' + ua + '</code>');
   satirlar.push('platform: <b>' + (navigator.platform || '?') + '</b>');
@@ -200,6 +200,9 @@ document.getElementById('kopyala').addEventListener('click', kopyala);
       '<code>armv8l</code> = 64-bit, <code>armv7l</code> = 32-bit.';
     document.getElementById('oneri').style.borderColor = '#d29922';
   }
+ } catch (e) {
+   document.getElementById('cihaz').innerHTML = 'JS hatasi: ' + e.message;
+ }
 })();
 
 // 4. bolumdeki komut kopyalama butonlari
