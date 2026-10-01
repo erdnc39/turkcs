@@ -111,16 +111,20 @@ class DiziPal : MainAPI() {
         // Zorunlu alanların kontrolü (Early return)
         val title = this.title ?: return null
         val href  = this.url ?: return null
+        // * arama JSON'undaki "rating": "6.8" -> afis uzerindeki reyting etiketi
+        val puan  = this.rating?.replace(",", ".")?.toDoubleOrNull()
 
         return if (this.type.equals("Dizi", ignoreCase = true)) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = this@toPostSearchResult.poster
                 this.year      = this@toPostSearchResult.year
+                if (puan != null && puan > 0.0) this.score = Score.from10(puan)
             }
         } else {
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = this@toPostSearchResult.poster
                 this.year      = this@toPostSearchResult.year
+                if (puan != null && puan > 0.0) this.score = Score.from10(puan)
             }
         }
     }

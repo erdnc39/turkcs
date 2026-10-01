@@ -228,11 +228,19 @@ class DiziPalOriginal : MainAPI() {
         val title     = this.title
         val href      = "${mainUrl}/${this.slug}"
         val posterUrl = this.poster
+        // * arama JSON'undaki IMDB puani -> afis uzerindeki reyting etiketi
+        val puan      = this.imdb
 
         return if (this.type == "series") {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
+            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                this.posterUrl = posterUrl
+                if (puan > 0.0) this.score = Score.from10(puan)
+            }
         } else {
-            newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = posterUrl }
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = posterUrl
+                if (puan > 0.0) this.score = Score.from10(puan)
+            }
         }
     }
 
@@ -282,7 +290,8 @@ class DiziPalOriginal : MainAPI() {
             ?: document.selectFirst("meta[name=description]")?.attr("content")?.trim()?.ifBlank { null }
             ?: document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
         // * IMDB puani: <div class="key">IMDB Puani</div><div class="value">7.9</div>
-        val score       = document.selectXpath("//div[text()='IMDB Puanı']/following-sibling::div")
+        // * tam eslesme ('IMDB Puani') sayfada 0 sonuc veriyor -> contains kullan
+        val score       = document.selectXpath("//div[contains(text(),'IMDB')]/following-sibling::div[1]")
             .text().trim().ifBlank { null }?.let { Score.from10(it) }
         val tags        = document.selectXpath("//div[text()='Kategoriler']//following-sibling::div").text().trim().split(" ").map { it.trim() }
         val duration    = Regex("(\\d+)").find(document.selectXpath("//div[text()='Süre']//following-sibling::div").text())?.value?.toIntOrNull()
