@@ -159,7 +159,7 @@ document.getElementById('kopyala').addEventListener('click', kopyala);
   const ua = navigator.userAgent;
   const satirlar = [];
   satirlar.push('UA: <code>' + ua + '</code>');
-  satirlar.push('platform: <b>' + (navigator.platform || '?') + '</b>');
+  satirlar.push('platform (tarayıcı ABI): <b>' + (navigator.platform || '?') + '</b>');
   satirlar.push('ekran: ' + screen.width + '×' + screen.height + ' @' + (window.devicePixelRatio || 1) + 'x');
   satirlar.push('çekirdek: ' + (navigator.hardwareConcurrency || '?') +
                 ' · RAM≈' + (navigator.deviceMemory ? navigator.deviceMemory + ' GB' : '?'));
@@ -195,10 +195,24 @@ document.getElementById('kopyala').addEventListener('click', kopyala);
       }
     }).catch(() => {});
   } else {
-    document.getElementById('oneri').innerHTML =
-      '⚠️ Tarayıcı <b>bitness</b> vermiyor (eski WebView). Aşağıdaki <b>platform</b> satırını bana yaz: ' +
-      '<code>armv8l</code> = 64-bit, <code>armv7l</code> = 32-bit.';
-    document.getElementById('oneri').style.borderColor = '#d29922';
+    // userAgentData yoksa platform'dan karar ver: armv9/armv8 = 64-bit, armv7 = 32-bit
+    const ham = (navigator.platform || '').toLowerCase();
+    const kutu = document.getElementById('oneri');
+    const platformSatir = navigator.platform || 'yok';
+    if (/armv9|armv8|aarch64|x86_64|win64/.test(ham)) {
+      kutu.innerHTML = '✅ <b>platform: ' + platformSatir + '</b> → <b>64-BIT cihaz</b>.<br>' +
+        'Termux\'un <b>arm64</b> sürümünü kur (ARMv9 yalnızca 64-bit\'tir; ' +
+        '32-bit sürümden <u>cannot locate symbol</u> hatası zaten geliyordu).<br>' +
+        'Kurulum “yüklenemedi” derse: önce <b>Termux\'u kaldır</b>, depolamayı kontrol et, sonra tekrar.';
+      kutu.style.borderColor = '#238636';
+    } else if (/armv7|armv6|i686/.test(ham)) {
+      kutu.innerHTML = '✅ <b>platform: ' + platformSatir + '</b> → <b>32-BIT cihaz</b>. ' +
+        '<b>armeabi-v7a</b> sürümünü kur.';
+      kutu.style.borderColor = '#238636';
+    } else {
+      kutu.innerHTML = '⚠️ platform okunamadı (<b>' + platformSatir + '</b>) — bu satırı bana yaz.';
+      kutu.style.borderColor = '#d29922';
+    }
   }
  } catch (e) {
    document.getElementById('cihaz').innerHTML = 'JS hatasi: ' + e.message;
