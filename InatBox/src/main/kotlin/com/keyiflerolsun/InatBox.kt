@@ -500,7 +500,10 @@ class InatBox : MainAPI() {
                 return@repeat
             }
 
-            Log.e("InatBox", "Request failed: HTTP ${response.code}")
+            // * hata govdesini de logla: "error code: 1006" = Cloudflare engeli,
+            // * "Content could not load" = imza sorunu
+            val hataGovdesi = try { response.body.string().take(120) } catch (e: Exception) { "(govde okunamadi)" }
+            Log.e("InatBox", "Request failed: HTTP ${response.code} | $hataGovdesi")
             return null
         }
 
