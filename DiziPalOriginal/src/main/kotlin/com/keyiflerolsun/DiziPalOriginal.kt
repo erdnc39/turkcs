@@ -189,10 +189,27 @@ class DiziPalOriginal : MainAPI() {
 
         val href      = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
         val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src"))
+        val yil       = kartYili()
+        val puan      = kartPuani()
 
         return newTvSeriesSearchResponse(title, href.substringBefore("/sezon"), TvType.TvSeries) {
             this.posterUrl = posterUrl
+            this.year      = yil
+            if (puan != null) this.score = Score.from10(puan)
         }
+    }
+
+    // * Kart altindaki yil: <span class="text-white text-sm">2026</span>
+    private fun Element.kartYili(): Int? = this.select("span.text-white.text-sm")
+        .map { it.text().trim() }
+        .firstOrNull { it.length == 4 && it.all { h -> h.isDigit() } }
+        ?.toIntOrNull()
+
+    // * Kart altindaki IMDB puani: <svg ...yildiz.../> <h4 class="text-sm text-white font-bold"> 7.7 </h4>
+    private fun Element.kartPuani(): Double? {
+        val metin = this.select("h4.text-sm.text-white.font-bold").firstOrNull()?.text()?.trim() ?: return null
+        val deger = metin.replace(",", ".").toDoubleOrNull() ?: return null
+        return if (deger > 0.0) deger else null
     }
 
     // * /yeni-eklenen-dizi-bolumler kartlari: <a href="/bolum/slug-1x5" class="... bg-[#1d1d1d]">
@@ -220,8 +237,14 @@ class DiziPalOriginal : MainAPI() {
         val title     = this.selectFirst("img")?.attr("alt") ?: return null
         val href      = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
         val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src"))
+        val yil       = kartYili()
+        val puan      = kartPuani()
 
-        return newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
+        return newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+            this.posterUrl = posterUrl
+            this.year      = yil
+            if (puan != null) this.score = Score.from10(puan)
+        }
     }
 
     private fun SearchItem.toPostSearchResult(): SearchResponse {
