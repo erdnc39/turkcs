@@ -1,9 +1,9 @@
-version = 99
+﻿version = 100
 
 cloudstream {
     authors     = listOf("keyiflerolsun", "muratcesmecioglu")
     language    = "tr"
-    description = "en yeni dizileri güvenli ve hızlı şekilde sunar."
+    description = "en yeni dizileri gÃ¼venli ve hÄ±zlÄ± ÅŸekilde sunar."
 
     /**
      * Status int as the following:
