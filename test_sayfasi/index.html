@@ -81,6 +81,10 @@
   4) depolama dolu olmasın (Termux ~120 MB yer kaplar).
 </p>
 
+<div class="note" id="oneri" style="border-color:#30363d">
+  ⏳ Cihazın bit yapısı okunuyor…
+</div>
+
 <a class="btn" href="/Termux-arm64.apk">⬇️ Termux — arm64 (64-bit, 35 MB)</a>
 <a class="btn" href="/Termux-armeabi.apk">⬇️ Termux — armeabi-v7a (32-bit, 32 MB)</a>
 
@@ -152,13 +156,50 @@ document.getElementById('kopyala').addEventListener('click', kopyala);
 // cihaz bilgisi paneli
 (function () {
   const ua = navigator.userAgent;
-  const android = (ua.match(/Android\s([\d.]+)/) || [])[1] || '?';
-  const abiYok = /ARM|aarch64|x86/i.test(ua);
-  document.getElementById('cihaz').innerHTML =
-    'Android: <b>' + android + '</b> · UA: <code>' + ua + '</code><br>' +
-    'Ekran: ' + screen.width + '×' + screen.height +
-    ' @' + (window.devicePixelRatio || 1) + 'x · Dil: ' + navigator.language +
-    (abiYok ? ' · <b style="color:#f0883e">UA ABI bilgisi veriyor (yukarıda arama)</b>' : '');
+  const android = (ua.match(/Android\s([\d.]+)/) || [])[1] ? '?';
+  const satirlar = [];
+  satirlar.push('UA: <code>' + ua + '</code>');
+  satirlar.push('platform: <b>' + (navigator.platform || '?') + '</b>');
+  satirlar.push('ekran: ' + screen.width + '×' + screen.height + ' @' + (window.devicePixelRatio || 1) + 'x');
+  satirlar.push('çekirdek: ' + (navigator.hardwareConcurrency || '?') +
+                ' · RAM≈' + (navigator.deviceMemory ? navigator.deviceMemory + ' GB' : '?'));
+  const gl = document.createElement('canvas').getContext('webgl');
+  if (gl) {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    if (ext) satirlar.push('GPU: <b>' + gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) + '</b>');
+  }
+  document.getElementById('cihaz').innerHTML = satirlar.join('<br>');
+
+  // Chrome/WebView varsa kesin bit bilgisi
+  if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+    navigator.userAgentData.getHighEntropyValues(
+      ['architecture', 'bitness', 'model', 'platformVersion', 'uaFullVersion']
+    ).then(v => {
+      document.getElementById('cihaz').innerHTML +=
+        '<br><b style="color:#3fb950">bitness: ' + (v.bitness || '?') +
+        ' · arch: ' + (v.architecture || '?') +
+        ' · model: ' + (v.model || '?') +
+        ' · Android: ' + (v.platformVersion || '?') + '</b>';
+      const bit = v.bitness;
+      const kutu = document.getElementById('oneri');
+      if (bit === '64') {
+        kutu.innerHTML = '✅ <b>64-bit cihaz</b> → <b>arm64</b> Termux kur (32-bit olanı <u>kurma</u>: ' +
+          '<i>cannot locate symbol</i> hatasını o verir). Önce kurulu olanı <b>kaldır</b>, sonra arm64\'ü kur.';
+        kutu.style.borderColor = '#238636';
+      } else if (bit === '32') {
+        kutu.innerHTML = '✅ <b>32-bit cihaz</b> → <b>armeabi-v7a</b> Termux kur (arm64 kurulmaz).';
+        kutu.style.borderColor = '#238636';
+      } else {
+        kutu.innerHTML = '⚠️ Bit bilgisi alınamadı — yeşil satırdaki <b>platform</b> ve <b>GPU</b> değerlerini bana yaz.';
+        kutu.style.borderColor = '#d29922';
+      }
+    }).catch(() => {});
+  } else {
+    document.getElementById('oneri').innerHTML =
+      '⚠️ Tarayıcı <b>bitness</b> vermiyor (eski WebView). Aşağıdaki <b>platform</b> satırını bana yaz: ' +
+      '<code>armv8l</code> = 64-bit, <code>armv7l</code> = 32-bit.';
+    document.getElementById('oneri').style.borderColor = '#d29922';
+  }
 })();
 
 // 4. bolumdeki komut kopyalama butonlari
