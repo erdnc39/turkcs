@@ -65,7 +65,24 @@
 </div>
 
 <h2>4) Cihaz erişimi (uzaktan debug için)</h2>
-<a class="btn" href="/Termux-arm64.apk">⬇️ Termux APK indir (35 MB)</a>
+
+<div class="note">
+  <b>Tarayıcıdan okunan cihaz bilgisi:</b><br>
+  <span id="cihaz" class="kucuk">okunuyor…</span>
+</div>
+
+<p class="kucuk">
+  <b>“Uygulama yüklenemedi”</b> hatası için sırayla dene:<br>
+  1) önce <b>arm64 (64-bit)</b>, olmazsa <b>armeabi (32-bit)</b> sürümü indir —
+  ucuz stick'ler çoğu zaman 32 bit;<br>
+  2) APK'yı <b>dosya yöneticisinden</b> aç (tarayıcının “Aç” düğmesi bazı TV'lerde çalışmaz);<br>
+  3) <b>Ayarlar → Uygulamalar → Güvenlik → Bilinmeyen kaynaklar</b> → indirme/dosya
+  uygulamasına izin ver;<br>
+  4) depolama dolu olmasın (Termux ~120 MB yer kaplar).
+</p>
+
+<a class="btn" href="/Termux-arm64.apk">⬇️ Termux — arm64 (64-bit, 35 MB)</a>
+<a class="btn" href="/Termux-armeabi.apk">⬇️ Termux — armeabi-v7a (32-bit, 32 MB)</a>
 
 <p class="kucuk">Termux'u aç, aşağıdaki komutları <b>tek tek</b> yapıştır ve çalıştır.
 Sonuçlar bana otomatik gider.</p>
@@ -121,6 +138,18 @@ async function kopyala() {
   }
 }
 document.getElementById('kopyala').addEventListener('click', kopyala);
+
+// cihaz bilgisi paneli
+(function () {
+  const ua = navigator.userAgent;
+  const android = (ua.match(/Android\s([\d.]+)/) || [])[1] || '?';
+  const abiYok = /ARM|aarch64|x86/i.test(ua);
+  document.getElementById('cihaz').innerHTML =
+    'Android: <b>' + android + '</b> · UA: <code>' + ua + '</code><br>' +
+    'Ekran: ' + screen.width + '×' + screen.height +
+    ' @' + (window.devicePixelRatio || 1) + 'x · Dil: ' + navigator.language +
+    (abiYok ? ' · <b style="color:#f0883e">UA ABI bilgisi veriyor (yukarıda arama)</b>' : '');
+})();
 
 // 4. bolumdeki komut kopyalama butonlari
 document.querySelectorAll('button[data-k]').forEach(btn => {
