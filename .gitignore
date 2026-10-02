@@ -20,3 +20,8 @@ test_sayfasi/_*.txt
 *.jks
 *.idsig
 test_sayfasi/apk_deneme/base.apk
+
+# ekran goruntuleri ve yerel artiklar
+ekran*.png
+ekran_*.png
+test_sayfasi/_*.txt
