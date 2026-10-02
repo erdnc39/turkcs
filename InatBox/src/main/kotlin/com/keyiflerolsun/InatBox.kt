@@ -51,7 +51,12 @@ class InatBox : MainAPI() {
     override var lang = "tr"
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Live)
-    override var sequentialMainPage = false
+    // * 20 kategori PARALEL cekiliyordu -> sunucu hizi azarlarsa IP banliyor (403/1006) ve
+    // * TUM LISTELER BOS kaliyordu. Artik sirayla, araliqli cekiyoruz.
+    override var sequentialMainPage = true
+    override var sequentialMainPageDelay = 350L      // * istekler arasi 0.35 sn
+    override var sequentialMainPageScrollDelay = 100L
+    // * NOT: eski tanim `sequentialMainPage = false` buradan silindi (cift tanim derleme hatasi)
 
     private val urlToSearchResponse = mutableMapOf<String, SearchResponse>()
     private val aesKey = "ywevqtjrurkwtqgz" //Master secret and iv key
