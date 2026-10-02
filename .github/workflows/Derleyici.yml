@@ -51,7 +51,7 @@
          run: |
            cd $GITHUB_WORKSPACE/src
            chmod +x gradlew
-           ./gradlew make makePluginsJson -x :RecTV:make -x :RecTV:writeCacheEntry
+           ./gradlew make makePluginsJson
            cp **/build/*.cs3 $GITHUB_WORKSPACE/builds
            cp build/plugins.json $GITHUB_WORKSPACE/builds
 
@@ -92,10 +92,10 @@
                data = []
            
            # eski RecTV girdilerini temizle
-           data = [p for p in data if p.get("internalName") != "RecTV"]
+           # ARTIK YEREL RecTV derleniyor - dis girdiye gerek yok
            
            # Yeni RecTV objesini ekle
-           data.append(rectv_entry)
+           # yerel RecTV kendi girdisini yazdi
            
            with open(plugins_file, "w", encoding="utf-8") as f:
                json.dump(data, f, indent=4, ensure_ascii=False)

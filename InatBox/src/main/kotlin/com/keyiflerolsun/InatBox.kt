@@ -345,6 +345,13 @@ class InatBox : MainAPI() {
             item.getString("chType")
         }
 
+        // * Liste karisik gorunuyordu: API tanitim/sosyal medya satirlari da donuyor
+        // * (link_mode, link, web, web_mode, redirect, ad) -> bunlar icerik degil
+        val kucuk = type.lowercase()
+        if (kucuk.startsWith("link")) return false
+        if (kucuk.startsWith("web")) return false
+        if (kucuk == "redirect" || kucuk == "ad" || kucuk == "promo") return false
+
         return when (type) {
             "link", "web" -> false
             else -> true
