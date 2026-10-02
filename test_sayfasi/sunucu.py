@@ -6,6 +6,8 @@ GET  /komut       -> kuyruktaki komutu verir ve kuyrugu temizler (tek seferlik)
 POST /sonuc       -> gelen govdeyi _sonuc.txt icine yazar (ben okuyorum)
 """
 import os
+import json
+import sys
 import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -29,6 +31,24 @@ class El(BaseHTTPRequestHandler):
 
     def do_GET(self):
         yol = self.path.split("?")[0]
+
+        # * Canli TV sayfasi ve verisi (3 kaynak tek JSON)
+        if yol == "/tv":
+            fp = os.path.join(D, "tv.html")
+            with open(fp, "rb") as f:
+                self._gonder(200, f.read(), "text/html; charset=utf-8")
+            return
+        if yol == "/api/canli":
+            try:
+                sys.path.insert(0, D)
+                import canli_tv_veri
+                veri = canli_tv_veri.topla()
+                self._gonder(200, json.dumps(veri, ensure_ascii=False),
+                             "application/json; charset=utf-8")
+            except Exception as e:
+                self._gonder(500, json.dumps({"hata": str(e)}), "application/json; charset=utf-8")
+            return
+
         if yol == "/komut":
             if os.path.exists(KOMUT):
                 with open(KOMUT, encoding="utf-8") as f:

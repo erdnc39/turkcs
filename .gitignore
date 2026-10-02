@@ -25,3 +25,4 @@ test_sayfasi/apk_deneme/base.apk
 ekran*.png
 ekran_*.png
 test_sayfasi/_*.txt
+test_sayfasi/canli_cache.json
