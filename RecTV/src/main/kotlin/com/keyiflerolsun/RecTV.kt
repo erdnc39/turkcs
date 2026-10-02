@@ -113,7 +113,9 @@ class RecTV : MainAPI() {
             }
         }
 
-        return newHomePageResponse(request.name, movies)
+        // * hasNext verilmiyordu -> uygulama sayfalama istemiyordu, sadece ilk 30 kayit geliyordu
+        // * API sayfa basina 30 dondurur; bos sayfa gormemek icin 30 kontrolu
+        return newHomePageResponse(request.name, movies, hasNext = movies.size >= 30)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
