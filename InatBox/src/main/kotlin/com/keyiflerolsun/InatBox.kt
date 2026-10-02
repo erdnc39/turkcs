@@ -90,10 +90,18 @@ class InatBox : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val jsonResponse =
-            makeInatRequest(request.data) ?: return newHomePageResponse(request.name, emptyList())
+        val jsonResponse = makeInatRequest(request.data)
+        if (jsonResponse == null) {
+            // * teshis: hangi kategori istek atiyor ve basarisiz oluyor?
+            Log.e("InatBox", "KAT-BASARISIZ '${request.name}' -> ${request.data.substringAfter("/dizibox/")}")
+            return newHomePageResponse(request.name, emptyList())
+        }
 
         val searchResults = getSearchResponseList(jsonResponse)
+
+        // * teshis: kategori etiketi gercek icerikle uyusuyor mu? (ilk 3 ad + adet)
+        Log.d("InatBox", "KAT '${request.name}' -> ${searchResults.size} kayit | " +
+            searchResults.take(3).joinToString(" / ") { it.name.take(30) })
 
         for (searchResponse in searchResults) {
             val url = searchResponse.url
