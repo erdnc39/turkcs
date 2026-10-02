@@ -54,11 +54,13 @@ class InatBox : MainAPI() {
     // * 20 kategori PARALEL cekiliyordu -> sunucu hizi azarlarsa IP banliyor (403/1006) ve
     // * TUM LISTELER BOS kaliyordu. Artik sirayla, araliqli cekiyoruz.
     override var sequentialMainPage = true
-    override var sequentialMainPageDelay = 350L      // * istekler arasi 0.35 sn
+    override var sequentialMainPageDelay = 1200L     // * istekler arasi 1.2 sn (hiz limitine takilmamak icin)
     override var sequentialMainPageScrollDelay = 100L
     // * NOT: eski tanim `sequentialMainPage = false` buradan silindi (cift tanim derleme hatasi)
 
     private val urlToSearchResponse = mutableMapOf<String, SearchResponse>()
+    // * kategori bazli yerel onbellek: url -> (zaman, ham json)
+    private val sayfaOnbellek = mutableMapOf<String, Pair<Long, String>>()
     private val aesKey = "ywevqtjrurkwtqgz" //Master secret and iv key
 
     // * 2026: istek imzalama anahtari (HMAC-SHA256) ve sunucu saat ofseti
@@ -90,12 +92,29 @@ class InatBox : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        // * Yerel onbellek: sunucu istek yogunlugunda IP banliyor (403/1006).
+        // * Bir kez cekilen kategori 45 dk boyunca tekrar istek atmadan kullanilir.
+        val onbellekKey = request.data
+        val onbellegi = sayfaOnbellek[onbellekKey]
+        if (onbellegi != null && System.currentTimeMillis() - onbellegi.first < 45 * 60_000L) {
+            Log.d("InatBox", "KAT-ONBELLEK '${request.name}' -> ${onbellegi.second.take(80).length} bayt (istek atilmadi)")
+            val cacheSonuc = getSearchResponseList(onbellegi.second)
+            return newHomePageResponse(request.name, cacheSonuc)
+        }
+
         val jsonResponse = makeInatRequest(request.data)
         if (jsonResponse == null) {
+            // * onbellekte varsa bayat veriyle de olsa goster
+            if (onbellegi != null) {
+                Log.d("InatBox", "KAT-ESKI-ONBELLEK '${request.name}' (istek basarisiz, onbellek kullanildi)")
+                return newHomePageResponse(request.name, getSearchResponseList(onbellegi.second))
+            }
             // * teshis: hangi kategori istek atiyor ve basarisiz oluyor?
             Log.e("InatBox", "KAT-BASARISIZ '${request.name}' -> ${request.data.substringAfter("/dizibox/")}")
             return newHomePageResponse(request.name, emptyList())
         }
+
+        sayfaOnbellek[onbellekKey] = System.currentTimeMillis() to jsonResponse
 
         val searchResults = getSearchResponseList(jsonResponse)
 
