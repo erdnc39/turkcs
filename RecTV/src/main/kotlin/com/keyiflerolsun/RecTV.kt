@@ -100,8 +100,41 @@ class RecTV : MainAPI() {
         val path     = uri.rawPath
         val headers  = signedHeaders("GET", path)
         val home     = app.get(url, headers = headers)
+        val movies   = ogeleriCevir(home.text) ?: emptyList()
 
-        val movies = AppUtils.tryParseJson<List<RecItem>>(home.text)!!.map { item ->
+        val istekCanli = request.name.contains("Canl", ignoreCase = true)
+
+        // * "Canli" satiri: tum sayfalari topla (API sayfa basina 30 dondurur, 83 kanal / 3 sayfa)
+        // * boylece satir tek seferde tum icerigi gosterir, kaydirmaya bagli kalmaz
+        val hepsi = if (istekCanli) {
+            val liste = movies.toMutableList()
+            var sonraki = page + 1
+            while (sonraki <= page + 9) {
+                val ekUrl = request.data.replace("SAYFA", "$sonraki")
+                val ekRes = try {
+                    app.get(ekUrl, headers = signedHeaders("GET", java.net.URI(ekUrl).rawPath))
+                } catch (e: Exception) {
+                    break
+                }
+                val ek = ogeleriCevir(ekRes.text) ?: emptyList()
+                if (ek.isEmpty()) break
+                liste.addAll(ek)
+                if (ek.size < 30) break      // son sayfa
+                sonraki++
+            }
+            liste
+        } else {
+            movies
+        }
+
+        // * Canli icin tumu zaten cekildi -> hasNext false (ayni sayfalar tekrar cekilmesin)
+        return newHomePageResponse(request.name, hepsi, hasNext = !istekCanli && movies.size >= 30)
+    }
+
+    private fun ogeleriCevir(metin: String): List<SearchResponse>? {
+        val items = AppUtils.tryParseJson<List<RecItem>>(metin) ?: return null
+
+        return items.map { item ->
             val toDict = jacksonObjectMapper().writeValueAsString(item)
 
             if (item.label != "CANLI" && item.label != "Canlı") {
@@ -112,10 +145,6 @@ class RecTV : MainAPI() {
                 }
             }
         }
-
-        // * hasNext verilmiyordu -> uygulama sayfalama istemiyordu, sadece ilk 30 kayit geliyordu
-        // * API sayfa basina 30 dondurur; bos sayfa gormemek icin 30 kontrolu
-        return newHomePageResponse(request.name, movies, hasNext = movies.size >= 30)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
