@@ -34,8 +34,6 @@
 
 | Eklenti | Tür |
 |---|---|
-| AsyaAnimeleri | Anime |
-| BelgeselX | Documentary |
 | CanliTV | Live |
 | Ddizi | TvSeries |
 | DiziBox | TvSeries |
@@ -53,16 +51,13 @@
 | HDFilmDelisi | Movie, TvSeries |
 | InatBox | Movie, TvSeries, Live |
 | JetFilmizle | Movie |
-| RareFilmm | Movie |
 | RecTV | Movie, Live, TvSeries |
 | SelcukFlix | Movie, TvSeries |
 | SetFilmIzle | Movie, TvSeries |
 | SezonlukDizi | TvSeries |
 | SinemaCX | Movie |
 | Sinewix | Movie, TvSeries, Anime |
-| WebdramaTurkey2 | AsianDrama, Movie, Anime, Others |
 | WebteIzle | Movie |
-| YeniSite | Movie (iskelet) |
 
 ---
 
