@@ -27,3 +27,4 @@ ekran_*.png
 test_sayfasi/_*.txt
 test_sayfasi/canli_cache.json
 __pycache__/
+tv_*.png
