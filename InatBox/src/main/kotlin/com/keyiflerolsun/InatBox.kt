@@ -116,6 +116,10 @@ class InatBox : MainAPI() {
 
         sayfaOnbellek[onbellekKey] = System.currentTimeMillis() to jsonResponse
 
+        // * Diske de yaz: aynagi ag uzerinden Python ile cekmek engelleniyor (TLS parmakizi),
+        // * uygulamanin cektigi veriyi TV sayfasi cihazdan okuyabilsin
+        hamJsonYaz(request.data, jsonResponse)
+
         val searchResults = getSearchResponseList(jsonResponse)
 
         // * teshis: kategori etiketi gercek icerikle uyusuyor mu? (ilk 3 ad + adet)
@@ -367,6 +371,20 @@ class InatBox : MainAPI() {
         } catch (e: Exception) {
             Log.e("InatBox", "Failed to parse movie response: ${e.message}")
             return null
+        }
+    }
+
+    // * Ham JSON'u dis diske yaz (TV sayfasi icin): /sdcard/.../files/inatbox/<kategori>.json
+    private fun hamJsonYaz(kategoriUrl: String, hamJson: String) {
+        try {
+            val ad = kategoriUrl.substringAfterLast("/").ifBlank { "kategori" }
+                .replace(Regex("[^A-Za-z0-9_.-]"), "_")
+            val dir = java.io.File("/sdcard/Android/data/com.lagradost.cloudstream3.prerelease/files/inatbox")
+            if (!dir.exists()) dir.mkdirs()
+            java.io.File(dir, "$ad.json").writeText(hamJson)
+            Log.d("InatBox", "ONBELLEK-YAZILDI $ad.json (${hamJson.length} bayt)")
+        } catch (e: Exception) {
+            Log.e("InatBox", "ONBELLEK-YAZILAMADI: ${e.message}")
         }
     }
 
