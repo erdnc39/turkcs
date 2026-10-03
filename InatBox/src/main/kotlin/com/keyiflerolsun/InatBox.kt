@@ -54,7 +54,7 @@ class InatBox : MainAPI() {
     // * 20 kategori PARALEL cekiliyordu -> sunucu hizi azarlarsa IP banliyor (403/1006) ve
     // * TUM LISTELER BOS kaliyordu. Artik sirayla, araliqli cekiyoruz.
     override var sequentialMainPage = true
-    override var sequentialMainPageDelay = 1200L     // * istekler arasi 1.2 sn (hiz limitine takilmamak icin)
+    override var sequentialMainPageDelay = 5000L     // * istekler arasi 5 sn (ban tetiklememek icin)
     override var sequentialMainPageScrollDelay = 100L
     // * NOT: eski tanim `sequentialMainPage = false` buradan silindi (cift tanim derleme hatasi)
 
@@ -92,6 +92,13 @@ class InatBox : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        // * 1) ONCE DISKTEN: ban dongusunde istek atmadan icerik goster (6 saat gecerli)
+        val disk = hamJsonOku(request.data)
+        if (disk != null && System.currentTimeMillis() - disk.second < 6 * 3600_000L) {
+            Log.d("InatBox", "KAT-DISK '${request.name}' -> ${disk.first.length} bayt (ISTEK YOK)")
+            return newHomePageResponse(request.name, getSearchResponseList(disk.first))
+        }
+
         // * Yerel onbellek: sunucu istek yogunlugunda IP banliyor (403/1006).
         // * Bir kez cekilen kategori 45 dk boyunca tekrar istek atmadan kullanilir.
         val onbellekKey = request.data
@@ -375,17 +382,28 @@ class InatBox : MainAPI() {
     }
 
     // * Ham JSON'u dis diske yaz (TV sayfasi icin): /sdcard/.../files/inatbox/<kategori>.json
+    private val diskKlasor =
+        java.io.File("/sdcard/Android/data/com.lagradost.cloudstream3.prerelease/files/inatbox")
+
+    private fun kategoriAdi(kategoriUrl: String): String =
+        kategoriUrl.substringAfterLast("/").ifBlank { "kategori" }.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+
     private fun hamJsonYaz(kategoriUrl: String, hamJson: String) {
         try {
-            val ad = kategoriUrl.substringAfterLast("/").ifBlank { "kategori" }
-                .replace(Regex("[^A-Za-z0-9_.-]"), "_")
-            val dir = java.io.File("/sdcard/Android/data/com.lagradost.cloudstream3.prerelease/files/inatbox")
-            if (!dir.exists()) dir.mkdirs()
-            java.io.File(dir, "$ad.json").writeText(hamJson)
-            Log.d("InatBox", "ONBELLEK-YAZILDI $ad.json (${hamJson.length} bayt)")
+            if (!diskKlasor.exists()) diskKlasor.mkdirs()
+            java.io.File(diskKlasor, "${kategoriAdi(kategoriUrl)}.json").writeText(hamJson)
+            Log.d("InatBox", "ONBELLEK-YAZILDI ${kategoriAdi(kategoriUrl)}.json (${hamJson.length} bayt)")
         } catch (e: Exception) {
             Log.e("InatBox", "ONBELLEK-YAZILAMADI: ${e.message}")
         }
+    }
+
+    // * Diskten oku: ban dongusunde istek ATMADAN icerik goster
+    private fun hamJsonOku(kategoriUrl: String): Pair<String, Long>? = try {
+        val dosya = java.io.File(diskKlasor, "${kategoriAdi(kategoriUrl)}.json")
+        if (dosya.exists() && dosya.length() > 0L) dosya.readText() to dosya.lastModified() else null
+    } catch (e: Exception) {
+        null
     }
 
     private fun inatContentAllowed(item: JSONObject): Boolean {
