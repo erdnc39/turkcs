@@ -148,16 +148,26 @@ def _inat_coz(metin):
 
 
 def inat_kanallari():
-    """Spor + kanal listelerinden canli icerikleri topla."""
+    """Spor + kanal listelerinden canli icerikleri topla.
+
+    Dikkat: sunucu HIZINA gore IP banliyor (4 hizli istek -> saatlerce 403).
+    Bu yuzden kategoriler arasinda 45 sn bekleriz.
+    """
     kanal = []
     basari = 0
-    for yol, grup in [("/tv/list1.php", "Spor & Kanallar"),
-                      ("/tv/list2.php", "Kanallar"),
-                      ("/tv/sinema.php", "Sinema"),
-                      ("/tv/haber.php", "Haber")]:
-        try:
-            veri = _inat_coz(_inat_post(yol))
-        except Exception:
+    kategoriler = [("/tv/list1.php", "Spor & Kanallar"),
+                   ("/tv/list2.php", "Kanallar"),
+                   ("/tv/sinema.php", "Sinema")]
+    for no, (yol, grup) in enumerate(kategoriler):
+        veri = None
+        for deneme in range(2):
+            try:
+                veri = _inat_coz(_inat_post(yol))
+                break
+            except Exception:
+                if deneme == 0:
+                    time.sleep(60)      # 403 -> biraz bekle, tekrar dene
+        if veri is None:
             continue
         if not isinstance(veri, list):
             continue
@@ -177,7 +187,8 @@ def inat_kanallari():
                 "aciklama": "",
                 "kaynak": "InatBox",
             })
-        time.sleep(1.4)           # hiz limitine takilmamak icin
+        if no < len(kategoriler) - 1:
+            time.sleep(45)        # hiz limiti: kategoriler arasi 45 sn
     if basari == 0:
         raise RuntimeError("tum kategoriler basarisiz (agengeli/403 olabilir)")
     return kanal
@@ -273,11 +284,16 @@ def topla(guncelle=False):
 
 if __name__ == "__main__":
     if "--inat" in sys.argv:
-        # * CI modu: sadece InatBox'i cek ve yedek olarak yazdir
-        kanal = inat_kanallari()
-        json.dump({"zaman": time.time(), "kanallar": kanal},
-                  open(INAT_YEDEK, "w", encoding="utf-8"), ensure_ascii=False)
-        print("InatBox yedek yazildi:", len(kanal), "kanal ->", INAT_YEDEK)
+        # * CI modu: sadece InatBox'i cek ve yedek olarak yazdir.
+        # * Ban nedeniyle basarisiz olursa IS hata verme -> eski yedek korunur.
+        try:
+            kanal = inat_kanallari()
+            json.dump({"zaman": time.time(), "kanallar": kanal},
+                      open(INAT_YEDEK, "w", encoding="utf-8"), ensure_ascii=False)
+            print("InatBox yedek yazildi:", len(kanal), "kanal ->", INAT_YEDEK)
+        except Exception as e:
+            print("InatBox cekilemedi (ag engeli olabilir): %s" % e)
+            print("mevcut yedek korundu.")
     else:
         veri = topla(guncelle=True)
         print("kaynaklar:", json.dumps(veri["kaynaklar"], ensure_ascii=False, indent=2))
