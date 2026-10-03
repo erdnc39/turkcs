@@ -4,145 +4,197 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>TurkCS — Canlı TV</title>
+<script src="/hls.min.js"></script>
 <style>
-  * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; background:#05070a; color:#e6edf3;
-               font-family: "Segoe UI", Roboto, system-ui, sans-serif;
-               height:100%; overflow-x:hidden; }
-  header { position:sticky; top:0; z-index:50; background:linear-gradient(180deg,#0b1016 75%,rgba(11,16,22,.85));
-           padding:14px 26px; display:flex; align-items:center; gap:18px; flex-wrap:wrap;
-           border-bottom:1px solid #1b2530; }
-  h1 { font-size:26px; margin:0; letter-spacing:.5px; }
-  h1 small { font-size:14px; color:#7d8894; font-weight:400; margin-left:10px; }
-  .chip { font-size:13px; padding:5px 12px; border-radius:20px; background:#111a24; border:1px solid #22303f; color:#9fb0c3; }
-  .chip b { color:#e6edf3; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; background:#05070a; color:#e6edf3;
+               font-family:"Segoe UI", Roboto, system-ui, sans-serif; overflow:hidden; }
+  body { display:flex; flex-direction:column; }
+
+  header { flex:none; display:flex; align-items:center; gap:14px; padding:10px 18px;
+           background:#0b1016; border-bottom:1px solid #1b2530; }
+  h1 { font-size:20px; margin:0; }
+  h1 small { color:#7d8894; font-size:13px; font-weight:400; margin-left:8px; }
+  #arama { flex:1; max-width:340px; font-size:15px; padding:7px 12px; border-radius:8px;
+           background:#0e1620; border:1px solid #22303f; color:#e6edf3; outline:none; }
+  #arama:focus { border-color:#2f81f7; }
+  .chip { font-size:12px; padding:4px 10px; border-radius:14px; background:#111a24;
+          border:1px solid #22303f; color:#9fb0c3; }
   .chip.ok { border-color:#1f6f3f; color:#7ee2a8; }
   .chip.err { border-color:#7a2530; color:#ff9aa2; }
-  .badge { font-size:11px; padding:3px 9px; border-radius:6px; font-weight:700; letter-spacing:.4px; }
+
+  .govde { flex:1; display:flex; min-height:0; }
+
+  /* -------- SOL: kanal listesi -------- */
+  #sol { width:38%; max-width:520px; min-width:330px; display:flex; flex-direction:column;
+         border-right:1px solid #1b2530; background:#080b10; }
+  #filtreler { display:flex; gap:8px; padding:10px 12px 4px; flex-wrap:wrap; }
+  .filtre { font-size:13px; padding:5px 12px; border-radius:14px; background:#0e1620;
+            border:1px solid #1b2530; color:#9fb0c3; cursor:pointer; }
+  .filtre.aktif { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+  #liste { flex:1; overflow-y:auto; padding:6px 10px 24px; scrollbar-width:thin; }
+  #liste::-webkit-scrollbar { width:8px; }
+  #liste::-webkit-scrollbar-thumb { background:#1d2836; border-radius:8px; }
+  .grup-baslik { font-size:14px; color:#8ea3b8; margin:14px 4px 8px; display:flex; gap:8px; align-items:center; }
+  .kanal { display:flex; gap:10px; align-items:center; padding:8px; border-radius:10px; cursor:pointer;
+           border:1px solid transparent; }
+  .kanal:hover, .kanal:focus { outline:none; background:#111a24; border-color:#2f81f7; }
+  .kanal.aktif { background:#12233c; border-color:#2f81f7; }
+  .logo { width:64px; height:40px; border-radius:6px; background:#18222e; object-fit:cover; flex:none;
+          display:flex; align-items:center; justify-content:center; font-size:20px; color:#3d4a59; overflow:hidden; }
+  .ad { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .alt { display:flex; gap:6px; margin-top:3px; }
+  .badge { font-size:10px; padding:2px 7px; border-radius:5px; font-weight:700; }
   .b-rectv { background:#123a6b; color:#8fc1ff; }
   .b-inat  { background:#5a2a12; color:#ffb27a; }
   .b-canli { background:#14472a; color:#8ff0b6; }
-  #arama { flex:1; min-width:220px; max-width:420px; font-size:17px; padding:9px 14px; border-radius:10px;
-           background:#0e1620; border:1px solid #22303f; color:#e6edf3; outline:none; }
-  #arama:focus { border-color:#2f81f7; box-shadow:0 0 0 2px rgba(47,129,247,.35); }
-  #filtreler { display:flex; gap:10px; padding:12px 26px 0; flex-wrap:wrap; }
-  .filtre { font-size:14px; padding:7px 15px; border-radius:18px; background:#0e1620; border:1px solid #1b2530;
-            color:#9fb0c3; cursor:pointer; }
-  .filtre.aktif { background:#1f6feb; border-color:#1f6feb; color:#fff; }
-  main { padding:16px 26px 60px; }
-  .kaynak-baslik { font-size:19px; margin:26px 0 12px; color:#c7d2de; display:flex; align-items:center; gap:10px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:14px; }
-  .kart { display:flex; gap:12px; align-items:center; background:#0e141c; border:1px solid #18212c;
-          border-radius:14px; padding:12px; cursor:pointer; text-decoration:none; color:inherit;
-          transition:transform .08s ease, border-color .08s, background .08s; min-height:86px; }
-  .kart:hover, .kart:focus { outline:none; border-color:#2f81f7; background:#121b26; transform:scale(1.03);
-                             box-shadow:0 6px 22px rgba(47,129,247,.25); }
-  .logo { width:84px; height:56px; border-radius:8px; background:#18222e; object-fit:cover; flex:none;
-          display:flex; align-items:center; justify-content:center; font-size:24px; color:#3d4a59; overflow:hidden; }
-  .bilgi { min-width:0; }
-  .ad { font-size:16px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .alt { display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap; }
-  .etiket { font-size:12px; color:#8b98a8; background:#141d27; padding:2px 8px; border-radius:6px; }
-  .aciklama { font-size:12px; color:#6f7d8d; margin-top:4px; display:-webkit-box; -webkit-line-clamp:2;
-              -webkit-box-orient:vertical; overflow:hidden; }
-  #bos { text-align:center; color:#7d8894; padding:60px 20px; font-size:18px; }
-  #durum { position:fixed; right:18px; bottom:18px; background:#0e1620; border:1px solid #22303f;
-           border-radius:10px; padding:10px 14px; font-size:13px; color:#9fb0c3; z-index:60; }
-  #toast { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); background:#238636; color:#fff;
-           padding:12px 22px; border-radius:10px; display:none; font-size:15px; z-index:99; }
-  .ipucu { color:#6f7d8d; font-size:13px; padding:6px 26px 0; }
+  .etiket { font-size:11px; color:#8b98a8; background:#141d27; padding:2px 7px; border-radius:5px; }
+
+  /* -------- SAG: player -------- */
+  #sag { flex:1; display:flex; flex-direction:column; min-width:0; background:#000; }
+  #oyuncu-kutu { position:relative; flex:1; min-height:0; background:#000; }
+  video { position:absolute; inset:0; width:100%; height:100%; background:#000; }
+  #baslik-cubugu { position:absolute; top:0; left:0; right:0; padding:14px 18px; z-index:5;
+                   background:linear-gradient(180deg, rgba(0,0,0,.85), rgba(0,0,0,0));
+                   display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  #kanal-adi { font-size:20px; font-weight:700; }
+  #kaynak-adi { font-size:13px; color:#9fb0c3; }
+  #dugmeler { display:flex; gap:8px; flex:none; }
+  .dugme { background:#12202f; color:#cfe1f5; border:1px solid #23384f; border-radius:8px;
+           padding:7px 13px; font-size:13px; cursor:pointer; }
+  .dugme:hover, .dugme:focus { outline:none; background:#1f6feb; border-color:#1f6feb; color:#fff; }
+  #durum-cubugu { position:absolute; left:0; right:0; bottom:0; padding:10px 16px; z-index:5;
+                  background:linear-gradient(0deg, rgba(0,0,0,.85), rgba(0,0,0,0)); font-size:13px; color:#9fb0c3; }
+  #hata { position:absolute; inset:0; display:none; flex-direction:column; align-items:center;
+          justify-content:center; gap:14px; text-align:center; background:rgba(5,7,10,.94); z-index:10; padding:26px; }
+  #hata b { color:#ff9aa2; font-size:17px; }
+  #hata .adres { font-size:12px; color:#7d8894; word-break:break-all; max-width:90%; }
+  #bos-sag { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+             color:#5f6d7c; font-size:17px; text-align:center; padding:30px; }
+  #toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); background:#238636;
+           color:#fff; padding:11px 20px; border-radius:9px; display:none; font-size:14px; z-index:99; }
+  .ipucu { font-size:12px; color:#5f6d7c; padding:6px 14px; border-top:1px solid #1b2530; background:#080b10; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>📺 TurkCS Canlı TV<small id="toplam">…</small></h1>
-  <input id="arama" type="text" placeholder="Kanal ara…  (yazmaya başla)" autocomplete="off">
+  <input id="arama" type="text" placeholder="Kanal ara…" autocomplete="off">
   <span class="chip" id="chip-rectv">RecTV <b>…</b></span>
   <span class="chip" id="chip-inat">InatBox <b>…</b></span>
   <span class="chip" id="chip-canli">CanliTV <b>…</b></span>
 </header>
 
-<div id="filtreler">
-  <span class="filtre aktif" data-kaynak="hepsi">Hepsi</span>
-  <span class="filtre" data-kaynak="RecTV">RecTV</span>
-  <span class="filtre" data-kaynak="InatBox">InatBox</span>
-  <span class="filtre" data-kaynak="CanliTV">CanliTV (m3u)</span>
+<div class="govde">
+  <!-- SOL: kanal listesi -->
+  <section id="sol">
+    <div id="filtreler">
+      <span class="filtre aktif" data-kaynak="hepsi">Hepsi</span>
+      <span class="filtre" data-kaynak="RecTV">RecTV</span>
+      <span class="filtre" data-kaynak="InatBox">InatBox</span>
+      <span class="filtre" data-kaynak="CanliTV">CanliTV</span>
+    </div>
+    <div id="liste"><div style="padding:24px;color:#5f6d7c">Kanallar yükleniyor…</div></div>
+    <div class="ipucu">↑↓ gezin · Enter = oynat · yaz = ara · L = link kopyala · F = tam ekran</div>
+  </section>
+
+  <!-- SAG: player -->
+  <section id="sag">
+    <div id="oyuncu-kutu">
+      <video id="video" controls autoplay playsinline></video>
+      <div id="bos-sag">Soldan bir kanal seçin (↑ ↓ ile gez, Enter ile oynat)</div>
+      <div id="baslik-cubugu" style="display:none">
+        <div>
+          <div id="kanal-adi">—</div>
+          <div id="kaynak-adi"></div>
+        </div>
+        <div id="dugmeler">
+          <button class="dugme" id="btn-dur">⏸ Duraklat</button>
+          <button class="dugme" id="btn-kopya">📋 Link</button>
+          <button class="dugme" id="btn-tam">⛶ Tam ekran</button>
+        </div>
+      </div>
+      <div id="durum-cubugu" style="display:none">hazır</div>
+      <div id="hata">
+        <b id="hata-mesaj">Yayın açılamadı</b>
+        <div class="adres" id="hata-adres"></div>
+        <div style="display:flex;gap:10px">
+          <button class="dugme" id="btn-tek">↻ Tekrar dene</button>
+          <button class="dugme" id="btn-kopya2">📋 Linki kopyala</button>
+          <button class="dugme" id="btn-dis">🌐 Tarayıcıda aç</button>
+        </div>
+      </div>
+    </div>
+  </section>
 </div>
 
-<div class="ipucu">↑ ↓ ← → ile gezin · Enter ile aç · yazıp ara · <b>C</b> ile linki kopyala</div>
-
-<main id="icerik"><div id="bos">Kanallar yükleniyor…</div></main>
-<div id="durum">veri çekiliyor…</div>
 <div id="toast"></div>
 
 <script>
-let TUM = [], KAYNAK = "hepsi", ARAMA = "";
+let TUM = [], KAYNAK = "hepsi", ARAMA = "", SECILI = null, HLS = null;
 
-function kartYap(k) {
-  const a = document.createElement("a");
-  a.className = "kart";
-  a.href = k.url;
-  a.target = "_blank";
-  a.rel = "noopener";
-  a.dataset.kaynak = k.kaynak;
-  a.dataset.ad = (k.ad || "").toLowerCase();
+const v = document.getElementById("video");
+const toastEl = document.getElementById("toast");
+function toast(m) { toastEl.textContent = m; toastEl.style.display = "block";
+  setTimeout(() => toastEl.style.display = "none", 3000); }
+function kopyala(url) {
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast("✅ Link kopyalandı"))
+    .catch(() => toast(url)); else toast(url);
+}
+function durum(m) { const e = document.getElementById("durum-cubugu");
+  e.style.display = "block"; e.textContent = m; }
+function hataGoster(mesaj, adres) {
+  document.getElementById("hata-mesaj").textContent = mesaj;
+  document.getElementById("hata-adres").textContent = adres || "";
+  document.getElementById("hata").style.display = "flex";
+}
+function hataGizle() { document.getElementById("hata").style.display = "none"; }
+
+/* ---------------- veri ---------------- */
+function kartYap(k, idx) {
+  const d = document.createElement("div");
+  d.className = "kanal";
+  d.tabIndex = 0;
+  d.dataset.idx = idx;
   const rozet = k.kaynak === "RecTV" ? "b-rectv" : (k.kaynak === "InatBox" ? "b-inat" : "b-canli");
   const ilk = (k.ad || "?").trim().charAt(0).toUpperCase();
   const gorsel = k.gorsel
     ? `<img class="logo" src="${k.gorsel}" loading="lazy" onerror="this.outerHTML='<div class=logo>${ilk}</div>'">`
     : `<div class="logo">${ilk}</div>`;
-  a.innerHTML = `${gorsel}
-    <div class="bilgi">
+  d.innerHTML = `${gorsel}<div style="min-width:0">
       <div class="ad" title="${(k.ad||"").replace(/"/g,"&quot;")}">${k.ad}</div>
-      <div class="alt">
-        <span class="badge ${rozet}">${k.kaynak}</span>
-        ${k.etiket ? `<span class="etiket">${k.etiket}</span>` : ""}
-      </div>
-      ${k.aciklama ? `<div class="aciklama">${k.aciklama}</div>` : ""}
-    </div>`;
-  a.addEventListener("contextmenu", e => { e.preventDefault(); kopyala(k.url); });
-  return a;
-}
-
-function kopyala(url) {
-  const t = document.getElementById("toast");
-  const goster = m => { t.textContent = m; t.style.display = "block";
-                        setTimeout(() => t.style.display = "none", 3500); };
-  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => goster("✅ Link kopyalandı"))
-    .catch(() => goster("Kopyalanamadı"));
-  else goster(url);
+      <div class="alt"><span class="badge ${rozet}">${k.kaynak}</span>
+      ${k.etiket ? `<span class="etiket">${k.etiket}</span>` : ""}</div></div>`;
+  d.addEventListener("click", () => oynat(k));
+  d.addEventListener("dblclick", () => kopyala(k.url));
+  return d;
 }
 
 function ciz() {
-  const kutu = document.getElementById("icerik");
+  const kutu = document.getElementById("liste");
   const list = TUM.filter(k =>
     (KAYNAK === "hepsi" || k.kaynak === KAYNAK) &&
     (!ARAMA || (k.ad || "").toLowerCase().includes(ARAMA)));
   kutu.innerHTML = "";
-  if (!list.length) { kutu.innerHTML = '<div id="bos">Kayıt bulunamadı</div>'; return; }
-
+  if (!list.length) { kutu.innerHTML = '<div style="padding:24px;color:#5f6d7c">Kayıt yok</div>'; return; }
   const gruplar = {};
-  list.forEach(k => { (gruplar[k.kaynak] = gruplar[k.kaynak] || []).push(k); });
+  list.forEach(k => (gruplar[k.kaynak] = gruplar[k.kaynak] || []).push(k));
   ["RecTV", "InatBox", "CanliTV"].forEach(ad => {
     const dizi = gruplar[ad];
     if (!dizi || !dizi.length) return;
     const b = document.createElement("div");
-    b.className = "kaynak-baslik";
+    b.className = "grup-baslik";
     b.innerHTML = `${ad} <span class="etiket">${dizi.length} kanal</span>`;
     kutu.appendChild(b);
-    const g = document.createElement("div");
-    g.className = "grid";
-    dizi.forEach(k => g.appendChild(kartYap(k)));
-    kutu.appendChild(g);
+    dizi.forEach(k => kutu.appendChild(kartYap(k, TUM.indexOf(k))));
   });
   document.getElementById("toplam").textContent = ` · ${list.length} kanal`;
 }
 
 function durumCiz(veri) {
   const k = veri.kaynaklar || {};
-  const ayar = [["rectv", "RecTV"], ["inat", "InatBox"], ["canli", "CanliTV"]];
-  ayar.forEach(([id, ad]) => {
+  [["rectv","RecTV"],["inat","InatBox"],["canli","CanliTV"]].forEach(([id, ad]) => {
     const s = k[ad] || { adet: 0, durum: "yok" };
     const el = document.getElementById("chip-" + id);
     el.className = "chip " + (s.durum === "ok" ? "ok" : "err");
@@ -152,18 +204,76 @@ function durumCiz(veri) {
 }
 
 function yukle() {
-  document.getElementById("durum").textContent = "veri çekiliyor… (ilk açılış ~30 sn sürebilir)";
-  fetch("/api/canli").then(r => r.json()).then(v => {
-    TUM = v.kanallar || [];
-    durumCiz(v);
-    ciz();
-    const k = v.kaynaklar || {};
-    document.getElementById("durum").textContent =
-      `${TUM.length} kanal · önbellek ${new Date((v.zaman||0)*1000).toLocaleTimeString("tr-TR")}`;
-  }).catch(e => { document.getElementById("durum").textContent = "Hata: " + e; });
+  durum("veri çekiliyor… (ilk açılış ~30 sn)");
+  fetch("/api/canli").then(r => r.json()).then(veri => {
+    TUM = veri.kanallar || [];
+    durumCiz(veri); ciz();
+    const k = veri.kaynaklar || {};
+    document.getElementById("durum-cubuğu");
+    durum(`${TUM.length} kanal hazır · RecTV ${k.RecTV?.adet ?? 0} · CanliTV ${k.CanliTV?.adet ?? 0}` +
+          ` · InatBox ${k.InatBox?.adet ?? 0}${k.InatBox?.durum === "ok" ? "" : " (ag engeli)"}`);
+    const ilk = document.querySelector(".kanal");
+    if (ilk) { ilk.focus(); oynat(TUM[ilk.dataset.idx]); }
+  }).catch(e => { hataGoster("Veri alınamadı: " + e, "/api/canli"); });
 }
 
-/* ---- kumanda / klavye ---- */
+/* ---------------- player ---------------- */
+function oynat(k) {
+  SECILI = k;
+  document.querySelectorAll(".kanal").forEach(e => e.classList.toggle("aktif", +e.dataset.idx === TUM.indexOf(k)));
+  document.getElementById("bos-sag").style.display = "none";
+  document.getElementById("baslik-cubugu").style.display = "flex";
+  document.getElementById("kanal-adi").textContent = k.ad;
+  document.getElementById("kaynak-adi").textContent = `${k.kaynak}${k.etiket ? " · " + k.etiket : ""}`;
+  hataGizle(); durum("yayın açılıyor…");
+
+  if (HLS) { HLS.destroy(); HLS = null; }
+  v.removeAttribute("src"); v.load();
+
+  const url = k.url;
+  if (/\.m3u8(\?|$)/i.test(url)) {
+    if (window.Hls && Hls.isSupported()) {
+      HLS = new Hls({ maxBufferLength: 24, manifestLoadingTimeOut: 20000 });
+      HLS.loadSource(url); HLS.attachMedia(v);
+      HLS.on(Hls.Events.MANIFEST_PARSED, () => { v.play().catch(() => {}); durum("oynuyor"); });
+      HLS.on(Hls.Events.ERROR, (e, d) => {
+        if (d && d.fatal) {
+          hataGoster("Yayın açılamadı (HLS) — " + (d.details || d.type || ""), url);
+        }
+      });
+    } else if (v.canPlayType("application/vnd.apple.mpegurl")) {
+      v.src = url; v.play().catch(() => {});
+    } else {
+      hataGoster("Bu tarayıcı HLS desteklemiyor", url);
+    }
+  } else {
+    v.src = url;
+    v.play().catch(() => durum("otomatik oynatma engellendi — ▶ tuşuna basın"));
+  }
+}
+
+v.addEventListener("playing", () => { hataGizle(); durum("oynuyor ✓"); });
+v.addEventListener("waiting", () => durum("yükleniyor…"));
+v.addEventListener("error", () => {
+  if (!SECILI) return;
+  hataGoster("Yayın açılamadı (ağ/kaynak hatası)", SECILI.url);
+});
+v.addEventListener("loadstart", () => durum("bağlanıyor…"));
+
+document.getElementById("btn-dur").onclick = () => {
+  if (v.paused) { v.play(); } else { v.pause(); }
+};
+document.getElementById("btn-kopya").onclick = () => SECILI && kopyala(SECILI.url);
+document.getElementById("btn-kopya2").onclick = () => SECILI && kopyala(SECILI.url);
+document.getElementById("btn-tam").onclick = () => {
+  const el = document.getElementById("oyuncu-kutu");
+  if (document.fullscreenElement) document.exitFullscreen();
+  else el.requestFullscreen?.();
+};
+document.getElementById("btn-tek").onclick = () => SECILI && oynat(SECILI);
+document.getElementById("btn-dis").onclick = () => SECILI && window.open(SECILI.url, "_blank");
+
+/* ---------------- arama / filtre ---------------- */
 document.getElementById("arama").addEventListener("input", e => {
   ARAMA = e.target.value.trim().toLowerCase(); ciz();
 });
@@ -172,33 +282,31 @@ document.querySelectorAll(".filtre").forEach(f => f.addEventListener("click", ()
   f.classList.add("aktif"); KAYNAK = f.dataset.kaynak; ciz();
 }));
 
-function kartlar() { return [...document.querySelectorAll(".kart")]; }
+/* ---------------- kumanda ---------------- */
 document.addEventListener("keydown", e => {
-  const k = kartlar();
+  const k = [...document.querySelectorAll(".kanal")];
   if (!k.length) return;
-  const i = k.indexOf(document.activeElement);
-  const kolon = Math.max(1, Math.round(
-    document.querySelector(".grid").getBoundingClientRect().width / 274));
-  if (e.key === "ArrowRight") { (k[Math.min(k.length - 1, i + 1)] || k[0]).focus(); e.preventDefault(); }
-  else if (e.key === "ArrowLeft") { (k[Math.max(0, i - 1)] || k[0]).focus(); e.preventDefault(); }
-  else if (e.key === "ArrowDown") { (k[Math.min(k.length - 1, i + kolon)] || k[0]).focus(); e.preventDefault(); }
-  else if (e.key === "ArrowUp") { (k[Math.max(0, i - kolon)] || k[0]).focus(); e.preventDefault(); }
-  else if (e.key === "Enter" && document.activeElement.classList.contains("kart")) {
-    window.open(document.activeElement.href, "_blank"); e.preventDefault();
+  const aktif = document.activeElement;
+  const i = k.indexOf(aktif);
+  if (e.key === "ArrowDown") { (k[i < 0 ? 0 : Math.min(k.length - 1, i + 1)]).focus(); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { (k[i < 0 ? 0 : Math.max(0, i - 1)]).focus(); e.preventDefault(); }
+  else if (e.key === "Enter" && aktif && aktif.classList.contains("kanal")) {
+    oynat(TUM[+aktif.dataset.idx]); e.preventDefault();
   }
-  else if (e.key.toLowerCase() === "c" && document.activeElement.classList.contains("kart")) {
-    kopyala(document.activeElement.href); e.preventDefault();
-  }
+  else if (e.key.toLowerCase() === "l" && SECILI) { kopyala(SECILI.url); e.preventDefault(); }
+  else if (e.key.toLowerCase() === "f") { document.getElementById("btn-tam").click(); e.preventDefault(); }
+  else if (e.key.toLowerCase() === "p") { document.getElementById("btn-dur").click(); e.preventDefault(); }
   else if (e.key === "/") { document.getElementById("arama").focus(); e.preventDefault(); }
-  else if (e.key === "Escape") { document.activeElement.blur?.(); }
+  else if (e.key === "Escape") { v.pause?.(); }
 });
 
-/* kart gorunur olunca odakla (TV icin) */
+/* odak gorunur ilk karta gitsin */
 const gozlemci = new MutationObserver(() => {
-  const k = kartlar();
-  if (k.length && (document.activeElement === document.body || !document.activeElement)) k[0].focus();
+  const ilk = document.querySelector(".kanal");
+  if (ilk && (!document.activeElement || document.activeElement === document.body ||
+      !document.activeElement.classList.contains("kanal"))) ilk.focus();
 });
-gozlemci.observe(document.getElementById("icerik"), { childList: true, subtree: true });
+gozlemci.observe(document.getElementById("liste"), { childList: true });
 
 yukle();
 </script>
