@@ -17,6 +17,7 @@
        - "**/*.jpg"
        - "**/*.png"
        - "**/*.py"
+       - "**/inat_cache.json"
  
  jobs:
    CloudStreamDerleyici:

@@ -211,16 +211,26 @@ import re
 
 
 def inat_yedek_oku():
-    """GitHub Actions'in cekip commit ettigi yedek liste (7 gun gecerli)."""
-    if not os.path.exists(INAT_YEDEK):
-        return []
-    try:
-        veri = json.load(open(INAT_YEDEK, encoding="utf-8"))
-        if time.time() - veri.get("zaman", 0) > 7 * 24 * 3600:
-            return []
-        return veri.get("kanallar", [])
-    except Exception:
-        return []
+    """GitHub Actions'in cekip commit ettigi yedek liste (7 gun gecerli).
+
+    Once yerel dosyaya, orada yoksa GitHub raw URL'ine bakar (sunucu pull yapmaz).
+    """
+    adaylar = []
+    if os.path.exists(INAT_YEDEK):
+        adaylar.append(("yerel", lambda: open(INAT_YEDEK, encoding="utf-8").read()))
+
+    raw = "https://raw.githubusercontent.com/erdnc39/turkcs/master/test_sayfasi/inat_cache.json"
+    adaylar.append(("github", lambda: urllib.request.urlopen(raw, timeout=20).read().decode("utf-8")))
+
+    for _, oku in adaylar:
+        try:
+            veri = json.loads(oku())
+            if time.time() - veri.get("zaman", 0) > 7 * 24 * 3600:
+                continue
+            return veri.get("kanallar", [])
+        except Exception:
+            continue
+    return []
 
 
 def topla(guncelle=False):
