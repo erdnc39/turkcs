@@ -33,8 +33,12 @@ jobs:
 
       - name: Yedegi kaydet
         run: |
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
-          git add test_sayfasi/inat_cache.json
-          git commit -m "InatBox kanal listesi guncellendi" || echo "degisiklik yok"
-          git push || true
+          if [ -f test_sayfasi/inat_cache.json ]; then
+            git config --local user.email "actions@github.com"
+            git config --local user.name "GitHub Actions"
+            git add test_sayfasi/inat_cache.json
+            git commit -m "InatBox kanal listesi guncellendi" || echo "degisiklik yok"
+            git push || true
+          else
+            echo "Yedek dosya olusmadi (ag engeli olabilir) - mevcut yedek korundu"
+          fi

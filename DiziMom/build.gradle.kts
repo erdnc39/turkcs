@@ -1,9 +1,9 @@
-version = 61
+﻿version = 62
 
 cloudstream {
     authors     = listOf("keyiflerolsun")
     language    = "tr"
-    description = "Binlerce yerli yabancı dizi arşivi, tüm sezonlar, kesintisiz bölümler. Sadece dizi izle, Dizimom heryerde seninle!"
+    description = "Binlerce yerli yabancÄ± dizi arÅŸivi, tÃ¼m sezonlar, kesintisiz bÃ¶lÃ¼mler. Sadece dizi izle, Dizimom heryerde seninle!"
 
     /**
      * Status int as the following:
