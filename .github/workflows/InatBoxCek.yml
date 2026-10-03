@@ -1,0 +1,40 @@
+# InatBox kanal listesini GitHub IP'si ile ceker (agimiz engelli oldugu icin)
+# Sonuc: test_sayfasi/inat_cache.json -> TV sayfasi yedek olarak kullanir
+
+name: InatBox Kanal Çekici
+
+on:
+  schedule:
+    - cron: "23 */3 * * *"      # 3 saatte bir
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  InatBoxCek:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Depoyu kontrol et
+        uses: actions/checkout@v6
+        with:
+          ref: master
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bagimliliklari yukle
+        run: pip install pycryptodome
+
+      - name: InatBox listesini cek
+        run: python test_sayfasi/canli_tv_veri.py --inat
+
+      - name: Yedegi kaydet
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add test_sayfasi/inat_cache.json
+          git commit -m "InatBox kanal listesi guncellendi" || echo "degisiklik yok"
+          git push || true

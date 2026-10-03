@@ -22,6 +22,7 @@ import urllib.request
 sys.path.insert(0, os.path.join(os.environ.get("TEMP", ""), "pylibs"))
 
 DOSYA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "canli_cache.json")
+INAT_YEDEK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "inat_cache.json")
 TTL = 60 * 60
 CTX = ssl.create_default_context()
 UA_HIZLI = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
@@ -209,6 +210,19 @@ def canli_tv_kanallari():
 import re
 
 
+def inat_yedek_oku():
+    """GitHub Actions'in cekip commit ettigi yedek liste (7 gun gecerli)."""
+    if not os.path.exists(INAT_YEDEK):
+        return []
+    try:
+        veri = json.load(open(INAT_YEDEK, encoding="utf-8"))
+        if time.time() - veri.get("zaman", 0) > 7 * 24 * 3600:
+            return []
+        return veri.get("kanallar", [])
+    except Exception:
+        return []
+
+
 def topla(guncelle=False):
     """Tum kaynaklari topla; 60 dk onbellek."""
     if not guncelle and os.path.exists(DOSYA):
@@ -228,6 +242,15 @@ def topla(guncelle=False):
             sonuc["kaynaklar"][ad] = {"adet": len(liste), "sure": round(time.time() - bas, 1), "durum": "ok"}
             sonuc["kanallar"].extend(liste)
         except Exception as e:
+            # * InatBox ag engeline takilirsa: GitHub Actions'in cekip
+            # * commit ettigi yedek listeyi kullan (7 gun gecerli)
+            if ad == "InatBox":
+                yedek = inat_yedek_oku()
+                if yedek:
+                    sonuc["kaynaklar"][ad] = {"adet": len(yedek), "sure": round(time.time() - bas, 1),
+                                              "durum": "yedek", "mesaj": "ag engeli -> yedek liste kullanildi"}
+                    sonuc["kanallar"].extend(yedek)
+                    continue
             sonuc["kaynaklar"][ad] = {"adet": 0, "sure": round(time.time() - bas, 1),
                                       "durum": "hata", "mesaj": "%s: %s" % (type(e).__name__, str(e)[:80])}
 
@@ -239,6 +262,13 @@ def topla(guncelle=False):
 
 
 if __name__ == "__main__":
-    veri = topla(guncelle=True)
-    print("kaynaklar:", json.dumps(veri["kaynaklar"], ensure_ascii=False, indent=2))
-    print("toplam kanal:", len(veri["kanallar"]))
+    if "--inat" in sys.argv:
+        # * CI modu: sadece InatBox'i cek ve yedek olarak yazdir
+        kanal = inat_kanallari()
+        json.dump({"zaman": time.time(), "kanallar": kanal},
+                  open(INAT_YEDEK, "w", encoding="utf-8"), ensure_ascii=False)
+        print("InatBox yedek yazildi:", len(kanal), "kanal ->", INAT_YEDEK)
+    else:
+        veri = topla(guncelle=True)
+        print("kaynaklar:", json.dumps(veri["kaynaklar"], ensure_ascii=False, indent=2))
+        print("toplam kanal:", len(veri["kanallar"]))
