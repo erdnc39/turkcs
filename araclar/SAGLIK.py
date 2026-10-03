@@ -102,7 +102,8 @@ def _ad_oner(host):
         m2 = re.match(r"^([a-z0-9-]+)\.([a-z]{2,6})$", temiz)
         if m2:
             on, zarf = m2.group(1), m2.group(2)
-            for z in ("com", "fit", "best", "lol", "plus", "club", "biz", "top", "xyz", "live", "tv"):
+            for z in ("com", "fit", "best", "lol", "plus", "club", "biz", "top", "xyz",
+                      "live", "tv", "wiki", "online"):
                 if z != zarf:
                     adaylar.append("%s.%s" % (on, z))
 
@@ -129,10 +130,8 @@ def _ad_oner(host):
             return None
 
     with ThreadPoolExecutor(max_workers=8) as havuz:
-        for sonuc in havuz.map(dene, adaylar):
-            if sonuc:
-                return sonuc
-    return None
+        bulunan = [s for s in havuz.map(dene, adaylar) if s]
+    return bulunan[:3]        # * tek tahmin degil, TUM adaylari goster
 
 
 def kontrol(eklenti, mainurl):
@@ -165,15 +164,17 @@ def kontrol(eklenti, mainurl):
         kanit = dns_dogrula(host)
         if kanit:
             # * DNS cozuluyor ama cevap gelmiyor => bu "ag engeli" DEGILDIR;
-            # * adres tasinmis ya da kapanmis olabilir -> yeni adayi kendimiz arariz
-            oneri = _ad_oner(host)
+            # * adres tasinmis ya da kapanmis olabilir -> yeni adaylari kendimiz arariz
+            oneriler = _ad_oner(host)
             sonuc["durum"] = (
                 f"SITE YANIT VERMIYOR ({type(e).__name__}) -> DNS {kanit} ile cozuluyor; "
                 f"adres tasinmis/olmus olabilir"
-                + (f" | ONERI: https://{oneri}" if oneri else " | aday bulunamadi"))
+                + (f" | ADAYLAR: {', '.join(oneriler)}" if oneriler else " | aday bulunamadi"))
             sonuc["tasinmis"] = True
-            if oneri:
-                sonuc["onerilen_adres"] = f"https://{oneri}"
+            if oneriler:
+                # * ilk adayi oneri olarak isaretle; gerisi raporda listelenir
+                sonuc["onerilen_adres"] = f"https://{oneriler[0]}"
+                sonuc["adaylar"] = oneriler
         else:
             sonuc["durum"] = f"ALAN ADI OLU: DNS hic cozulmuyor ({type(e).__name__})"
             sonuc["olu"] = True
@@ -264,12 +265,14 @@ def main():
             print(f"  {'':20} -> {s['final']}   [{s.get('kod', '?')}]")
 
     if tasinmis:
-        print("\n### TAŞINMIŞ / OLMUŞ - ADRES GUNCELLENMELI (DNS var ama cevap yok; ADAY bulundu) ###")
+        print("\n### TAŞINMIŞ / OLMUŞ - ADRES GUNCELLENMELI (DNS var ama cevap yok) ###")
         for d, s in tasinmis:
             print(f"  {d:20} {s['mainurl']}")
             print(f"  {'':20} {s['durum']}")
+            if s.get("adaylar"):
+                print(f"  {'':20} tum adaylar: {', '.join(s['adaylar'])}")
             if s.get("onerilen_adres"):
-                print(f"  {'':20} >>> mainUrl = {s['onerilen_adres']}  (--apply ile otomatik yazilir)")
+                print(f"  {'':20} >>> oncelikli oneri = {s['onerilen_adres']}  (--apply ile yazilir)")
 
     if engelli:
         print("\n### ERISIM ENGELI - GUNCELLEME GEREKMEZ (alan adi dogru, site bizi engelliyor) ###")
