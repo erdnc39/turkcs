@@ -38,6 +38,44 @@ HEADERS = {
 }
 
 
+def sni_engelli_mi(host, ip=None):
+    """Baglanti TCP'de kuruluyor ama TLS anonsumunde RST yiyorsa True.
+
+    Bu bir bot engeli DEGIL. Ag katmani (ISP/DPI) SNI alanini okuyup
+    hedef alan adini engelliyor; tarayici ayni anda acilabiliyor cunku
+    onun TLS yigini farkli. Belirti: SNI'li TLS RST, SNI'siz TLS basarili.
+
+    Boyle bir durumda alan adini 'olu' sanmak yanlistir; adres degismedi.
+    """
+    import socket as _s
+    import ssl as _ssl
+
+    try:
+        ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+        with _s.create_connection((host, 443), timeout=10) as c:
+            c.settimeout(10)
+            with ctx.wrap_socket(c, server_hostname=host):
+                return False          # SNI'li TLS basarili -> engel yok
+    except Exception as e:
+        if type(e).__name__ != "ConnectionResetError":
+            return False              # sertifika/timeout gibi seyler -> engel degil
+
+    # * SNI'li basarisiz; SNI'siz deneyerek engelin SNI'dan gelip gelmedigini
+    # * kanitliyoruz (kontrol grubu).
+    try:
+        ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = _ssl.CERT_NONE
+        with _s.create_connection((host, 443), timeout=10) as c:
+            c.settimeout(10)
+            with ctx.wrap_socket(c):   # server_hostname yok -> SNI gonderilmez
+                return True
+    except Exception:
+        return False                  # SNI'siz de basarisiz -> sunucu/akis sorunu
+
+
 def dns_dogrula(host):
     """Host cozuluyor mu? 'yerel', 'bulut' ya da None dondurur."""
     try:
@@ -199,6 +237,19 @@ def kontrol(eklenti, mainurl):
         sonuc["durum"] = f"HTTP {e.code}"
         return sonuc
     except Exception as e:
+        # * TCP kuruluyor ama TLS anonsumunde RST yiyorsa bu AG KATMANINDA
+        # * SNI engellemesidir; site saglamdir ve adres dogrudur. Once bunu
+        # * dogruluyoruz, yoksa calisan bir alan adini 'tasinmis' sanip
+        # * olen bir adresle degistirmis olurduk.
+        if sni_engelli_mi(host):
+            sonuc["durum"] = (
+                "AG ENGELI: SNI engellemesi (TLS el sikismasinda RST, SNI'siz "
+                "TLS basarili) -> alan adi GUNCEL, site sag; guncelleme YAPMA. "
+                "Tarayici/diger aglardan acilabilir.")
+            sonuc["engel"] = True
+            sonuc["sni_engelli"] = True
+            return sonuc
+
         kanit = dns_dogrula(host)
         if kanit:
             # * DNS cozuluyor ama cevap gelmiyor => bu "ag engeli" DEGILDIR;
