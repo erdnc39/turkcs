@@ -114,17 +114,55 @@ def _ad_oner(host):
 
     ctx = ssl.create_default_context()
 
+    # * GoDaddy/Namecheap park sayfalari 200 doner, <title> ve hatta 5+ ic link
+    # * icerir; yalnizca bunlari saymak "yeni adres bulundu" saniyordu ve
+    # * eklentiye olen bir alan adini yaziyordu. Asagidaki imzalar gercek
+    # * icerik sitelerinde gorulmez, park sayfalarinda gorulur.
+    PARK_IMZALARI = (
+        "godaddy.com/websites/website-builder",
+        "wsimg.com",
+        "afternic.com",
+        "dan.com/buy-domain",
+        "sedoparking.com",
+        "parklogic.com",
+        "domainmarket.com",
+        "hugedomains.com",
+        "dan.com",
+        "cashparking.com",
+        "above.com/park",
+        "brandbucket.com",
+        "dan.com/lander",
+        "futurehomepage.com",
+        "comingsoon.com",
+        "islands.la",
+    )
+
+    # * Turkce izleme sitelerinin neredeyse tamaminda bulunan izler.
+    IZLEME_IZI = re.compile(
+        r"izle|watch|\bfilm\b|\bdizi\b|bolum|sezon|yeni\s+film", re.I)
+
     def dene(aday):
         try:
             istek = urllib.request.Request("https://%s/" % aday, headers=HEADERS)
-            with urllib.request.urlopen(istek, timeout=6, context=ctx) as r:
-                gov = r.read(40000).decode("utf-8", "ignore")
+            with urllib.request.urlopen(istek, timeout=8, context=ctx) as r:
+                gov = r.read(120000).decode("utf-8", "ignore")
             if "<title" not in gov.lower():
                 return None
-            # * park/bos sayfa kontrolu: gercek sitede yeterince ic link olur
-            ic_link = len(set(re.findall(r'href="(https?://[^"]+|/[^"]+)"', gov)))
-            if ic_link < 5:
+
+            al = gov.lower()
+            # * 1) park/ satis sayfasi imzasi -> kesin red
+            if any(i in al for i in PARK_IMZALARI):
                 return None
+
+            # * 2) bos sayfa: gercek sitede yeterince cok ic link olur
+            ic_link = set(re.findall(r'href="([^"]+)"', gov))
+            if len(ic_link) < 10:
+                return None
+
+            # * 3) gercek icerik izi: en az biri taniliyor olmali
+            if not any(IZLEME_IZI.search(x) for x in ic_link):
+                return None
+
             return aday
         except Exception:
             return None

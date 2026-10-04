@@ -14,7 +14,7 @@ import org.jsoup.Jsoup
 
 class DiziMom : MainAPI() {
     // * 2026-10-03: dizimom.help kapandi -> guncel adres dizimom.wiki (canli dogrulandi)
-    override var mainUrl              = "https://dizimom.wiki"
+    override var mainUrl              = "https://www.dizimom.wiki/"
     override var name                 = "DiziMom"
     override val hasMainPage          = true
     override var lang                 = "tr"
