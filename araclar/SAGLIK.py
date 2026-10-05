@@ -43,9 +43,12 @@ def sni_engelli_mi(host, ip=None):
 
     Bu bir bot engeli DEGIL. Ag katmani (ISP/DPI) SNI alanini okuyup
     hedef alan adini engelliyor; tarayici ayni anda acilabiliyor cunku
-    onun TLS yigini farkli. Belirti: SNI'li TLS RST, SNI'siz TLS basarili.
+    onun TLS yigini farkli. Belirti: SNI'li TLS RST.
 
     Boyle bir durumda alan adini 'olu' sanmak yanlistir; adres degismedi.
+    NOT: SNI'siz kontrol grubu Cloudflare'da basarisiz olabilir (Cloudflare
+    SNI'siz istegi reddeder), bu yuzden SNI'li ConnectionResetError tek
+    basina yeterli kanittir.
     """
     import socket as _s
     import ssl as _ssl
@@ -62,8 +65,11 @@ def sni_engelli_mi(host, ip=None):
         if type(e).__name__ != "ConnectionResetError":
             return False              # sertifika/timeout gibi seyler -> engel degil
 
-    # * SNI'li basarisiz; SNI'siz deneyerek engelin SNI'dan gelip gelmedigini
-    # * kanitliyoruz (kontrol grubu).
+    # * SNI'li baglanti RST yedi. Kontrol grubu: SNI gondermeden dene.
+    # * SNI'siz basari = kesin kanit. SNI'siz basarisizlik belirsizdir
+    # * (Cloudflare SNI'siz istegi reddediyor olabilir) ama SNI'li RST
+    # * gordugumuz icin yine de engel VAR sayiyoruz. Aksi halde calisan
+    # * bir alan adi 'oldu' sanilir ve eklentiye olen adres yazilir.
     try:
         ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = False
@@ -73,7 +79,7 @@ def sni_engelli_mi(host, ip=None):
             with ctx.wrap_socket(c):   # server_hostname yok -> SNI gonderilmez
                 return True
     except Exception:
-        return False                  # SNI'siz de basarisiz -> sunucu/akis sorunu
+        return True
 
 
 def dns_dogrula(host):
@@ -243,9 +249,9 @@ def kontrol(eklenti, mainurl):
         # * olen bir adresle degistirmis olurduk.
         if sni_engelli_mi(host):
             sonuc["durum"] = (
-                "AG ENGELI: SNI engellemesi (TLS el sikismasinda RST, SNI'siz "
-                "TLS basarili) -> alan adi GUNCEL, site sag; guncelleme YAPMA. "
-                "Tarayici/diger aglardan acilabilir.")
+                "AG ENGELI: SNI engellemesi (TLS el sikismasinda RST; alan adi "
+                "TLS icinde okunup engelleniyor) -> alan adi GUNCEL, site sag; "
+                "guncelleme YAPMA. Tarayici/diger aglardan acilabilir.")
             sonuc["engel"] = True
             sonuc["sni_engelli"] = True
             return sonuc
