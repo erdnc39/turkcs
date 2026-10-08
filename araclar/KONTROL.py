@@ -117,6 +117,13 @@ class MainUrlUpdater:
                     konsol.log(f"[!] {type(hata).__name__} : {hata}")
                     continue
             else:
+                # * mainUrl tanimi yoksa (InatBox: contentUrl diye gizliyor, HMAC imzali)
+                # * hicbir istek atma. Aksi halde get(None) patlar veya sonradan
+                # * mainUrl eklenince diziboxen.help'e kotu istek gitmeye baslar.
+                if not mainurl:
+                    konsol.log(f"[!] Atlandı        : {eklenti_adi} (mainUrl tanımı yok)")
+                    continue
+
                 try:
                     istek = self.oturum.get(mainurl, allow_redirects=True)
                     konsol.log(f"[+] Kontrol Edildi   : {mainurl}")

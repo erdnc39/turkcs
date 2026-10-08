@@ -27,6 +27,9 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import okhttp3.Interceptor
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import java.net.URI
 import javax.crypto.Cipher
@@ -67,6 +70,74 @@ class InatBox : MainAPI() {
     private val signingKey = "x7kkk0qmqz63kj68tla5i7u26192v7zqnnddhjgm"
     private var timeOffset = 0L
     private val secureRandom = SecureRandom()
+    // * AG ANAHTARI: ban üstüne ban yememek icin kapali.
+    // * Ban kaldirildiginda (veya hotspot'te tek cekim yapildiktan sonra) false yapilir.
+    private val agKapali = true
+
+    // * Iki istek arasinda beklenecek minimum sure (ms). diziboxen.help hiz limiti
+    // * koyuyor: ardisik isteklerde 403/1006 donuyor ve IP banliyor.
+    private val ISTEK_ARASI_BEKLEME_MS = 8_000L
+
+    // * Bekleme tek basina yetmiyor: kullanici diziler arasinda hizli gezince
+    // * (arama yazarken, kategori degistirirken, bolum atlayinca) istek sayisi
+    // * dakikada onlara cikiyor ve sunucu bunu burst olarak gorup banliyor.
+    // * Bu yuzden ayrica bir ZAMAN PENCERESI limiti koyuyoruz: 1 dakikada
+    // * en fazla N istek. Limit dolunca kalan sure beklenir.
+    private val ISTEK_PENCERESI_MS = 60_000L
+    private val ISTEK_PENCERESI_LIMITI = 8
+
+    // * Son istegin atildigi zaman (epoch ms). makeInatRequest bunu kullanarak
+    // * her istek oncesi gerekirse bekler -> paralel cagirmalar da tek seri akisa duser.
+    @Volatile private var sonIstekZamani = 0L
+
+    // * Es zamanli istekleri tek seri akisa indirir. getMainPage + arama + load
+    // * ayni anda tetiklenince Mutex olmadan ikisi de ayni "bos" anda geciyi gorup
+    // * ikisi de hemen atardi -> burst -> 403/1006.
+    private val istekKilidi = Mutex()
+
+    // * Pencere icindeki istek zaman damgalari.
+    private val pencereLogu = ArrayDeque<Long>()
+
+    private fun pencereTemizle(simdi: Long) {
+        while (pencereLogu.isNotEmpty() && simdi - pencereLogu.first() > ISTEK_PENCERESI_MS) {
+            pencereLogu.removeFirst()
+        }
+    }
+
+    // * Pencere doluysa kalan bekleme suresi (ms), dolu degilse 0.
+    private fun pencereBeklemeSuresi(simdi: Long): Long {
+        synchronized(pencereLogu) {
+            pencereTemizle(simdi)
+            if (pencereLogu.size < ISTEK_PENCERESI_LIMITI) return 0L
+            return (ISTEK_PENCERESI_MS - (simdi - pencereLogu.first())).coerceAtLeast(1_000L)
+        }
+    }
+
+    private fun pencereyeEkle(simdi: Long) {
+        synchronized(pencereLogu) {
+            pencereLogu.addLast(simdi)
+            pencereTemizle(simdi)
+        }
+    }
+
+    private suspend fun istekOncesiBekle() {
+        // * 1) Pencere limiti dolduysa once onu bekle (burst engeli).
+        val pencereBekle = pencereBeklemeSuresi(System.currentTimeMillis())
+        if (pencereBekle > 0) {
+            Log.d("InatBox", "HIZ LIMITI: $ISTEK_PENCERESI_LIMITI istek/dk doldu, ${pencereBekle}ms bekleniyor")
+            delay(pencereBekle)
+        }
+
+        istekKilidi.withLock {
+            val simdi = System.currentTimeMillis()
+            val gecen = simdi - sonIstekZamani
+            if (gecen < ISTEK_ARASI_BEKLEME_MS) {
+                delay(ISTEK_ARASI_BEKLEME_MS - gecen)
+            }
+            pencereyeEkle(System.currentTimeMillis())
+            sonIstekZamani = System.currentTimeMillis()
+        }
+    }
 
     override val mainPage = mainPageOf(
         "${contentUrl}/tv/list1.php"              to "Spor ve Kanallar",
@@ -97,6 +168,12 @@ class InatBox : MainAPI() {
         if (disk != null && System.currentTimeMillis() - disk.second < 6 * 3600_000L) {
             Log.d("InatBox", "KAT-DISK '${request.name}' -> ${disk.first.length} bayt (ISTEK YOK)")
             return newHomePageResponse(request.name, getSearchResponseList(disk.first))
+        }
+
+        // * 2) AG KAPALI -> hic istek atma (ban üstüne ban yememek icin)
+        if (agKapali) {
+            Log.d("InatBox", "KAT-AG-KAPALI '${request.name}' -> istek atilmadi")
+            return newHomePageResponse(request.name, emptyList())
         }
 
         // * Yerel onbellek: sunucu istek yogunlugunda IP banliyor (403/1006).
@@ -145,17 +222,24 @@ class InatBox : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
+        // * ASIL BAN KAYNAGI BURASIYDI: bu blok ag kapisini hic kontrol etmiyordu.
+        // * Cache bos olmasa bile 20 kategori x 1 istek = aninda ~20 imzali POST atiyordu
+        // * (quickSearch her tusa basildiginda tetiklenir) -> 403/1006 -> ban ustune ban.
+        // * Artik: ag kapaliyken veya onbellek bosken HICBIR istek atilmaz.
         if (urlToSearchResponse.isEmpty()) {
-            for (pageData in mainPage) {
-                val url = pageData.data
-                val jsonResponse = makeInatRequest(url) ?: continue
+            if (agKapali) {
+                Log.d("InatBox", "ARAMA-AG-KAPALI '$query' -> 20 kategori isteği atılmadı")
+            } else {
+                for (pageData in mainPage) {
+                    val jsonResponse = makeInatRequest(pageData.data) ?: continue
 
-                val searchResults = getSearchResponseList(jsonResponse)
+                    val searchResults = getSearchResponseList(jsonResponse)
 
-                for (searchResponse in searchResults) {
-                    val contentUrl = searchResponse.url
-                    if (!urlToSearchResponse.containsKey(contentUrl)) {
-                        urlToSearchResponse[contentUrl] = searchResponse
+                    for (searchResponse in searchResults) {
+                        val contentUrl = searchResponse.url
+                        if (!urlToSearchResponse.containsKey(contentUrl)) {
+                            urlToSearchResponse[contentUrl] = searchResponse
+                        }
                     }
                 }
             }
@@ -519,6 +603,11 @@ class InatBox : MainAPI() {
     }
 
     private suspend fun makeInatRequest(url: String): String? {
+        // * HIZ SINIRI: iki imzali POST arasinda minimum 8 sn bekleniyor.
+        // * Once getMainPage (20 kategori) + arama + load birlikte calistiginda
+        // * saniyede onlarca isket atilip sunucu tarafindan ban isleniyordu.
+        istekOncesiBekle()
+
         // Extract hostname using URI
         val hostName = try {
             URI(url).host ?: throw IllegalArgumentException("Invalid URL: $url")
@@ -539,6 +628,9 @@ class InatBox : MainAPI() {
         // * 2026: artik imzali istek gerekiyor (imzasiz -> 403 "Content could not load")
         // * 1. deneme guncel ofsetle; 403 gelirse govdedeki x-st (sunucu saati) ile ofsetleyip tekrar dener
         repeat(2) { deneme ->
+            // * 2. deneme de arka arkaya POST atiyor -> araya bekleme (burst engeli)
+            if (deneme > 0) istekOncesiBekle()
+
             val nonce = ByteArray(16).also { secureRandom.nextBytes(it) }
                 .joinToString("") { "%02x".format(it) }
             val ts = (System.currentTimeMillis() / 1000 + timeOffset).toString()

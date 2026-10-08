@@ -256,24 +256,26 @@ def topla(guncelle=False):
 
     sonuc = {"zaman": time.time(), "kaynaklar": {}, "kanallar": []}
 
-    for ad, fonk in [("RecTV", rec_tv_kanallari), ("InatBox", inat_kanallari), ("CanliTV", canli_tv_kanallari)]:
+    # * InatBox AG ISTEGI KAPALI (ban üstüne ban yiyorduk) -> sadece yedek dosyadan oku
+    for ad, fonk in [("RecTV", rec_tv_kanallari), ("CanliTV", canli_tv_kanallari)]:
         bas = time.time()
         try:
             liste = fonk()
             sonuc["kaynaklar"][ad] = {"adet": len(liste), "sure": round(time.time() - bas, 1), "durum": "ok"}
             sonuc["kanallar"].extend(liste)
         except Exception as e:
-            # * InatBox ag engeline takilirsa: GitHub Actions'in cekip
-            # * commit ettigi yedek listeyi kullan (7 gun gecerli)
-            if ad == "InatBox":
-                yedek = inat_yedek_oku()
-                if yedek:
-                    sonuc["kaynaklar"][ad] = {"adet": len(yedek), "sure": round(time.time() - bas, 1),
-                                              "durum": "yedek", "mesaj": "ag engeli -> yedek liste kullanildi"}
-                    sonuc["kanallar"].extend(yedek)
-                    continue
             sonuc["kaynaklar"][ad] = {"adet": 0, "sure": round(time.time() - bas, 1),
                                       "durum": "hata", "mesaj": "%s: %s" % (type(e).__name__, str(e)[:80])}
+
+    bas = time.time()
+    yedek = inat_yedek_oku()
+    sonuc["kaynaklar"]["InatBox"] = {
+        "adet": len(yedek), "sure": round(time.time() - bas, 1),
+        "durum": ("yedek" if yedek else "kapali"),
+        "mesaj": ("yalnizca yedek dosya (ag istegi YOK - ban)" if yedek
+                  else "ag istegi kapali + yedek yok"),
+    }
+    sonuc["kanallar"].extend(yedek)
 
     try:
         json.dump(sonuc, open(DOSYA, "w", encoding="utf-8"), ensure_ascii=False)
@@ -284,16 +286,20 @@ def topla(guncelle=False):
 
 if __name__ == "__main__":
     if "--inat" in sys.argv:
-        # * CI modu: sadece InatBox'i cek ve yedek olarak yazdir.
-        # * Ban nedeniyle basarisiz olursa IS hata verme -> eski yedek korunur.
-        try:
-            kanal = inat_kanallari()
-            json.dump({"zaman": time.time(), "kanallar": kanal},
-                      open(INAT_YEDEK, "w", encoding="utf-8"), ensure_ascii=False)
-            print("InatBox yedek yazildi:", len(kanal), "kanal ->", INAT_YEDEK)
-        except Exception as e:
-            print("InatBox cekilemedi (ag engeli olabilir): %s" % e)
-            print("mevcut yedek korundu.")
+        # * AG ISTEGI VARSAYILAN OLARAK KAPALI (ban üstüne ban).
+        # * Aciip tekrar denemek istersen:  --inat --zorla
+        if "--zorla" not in sys.argv:
+            print("InatBox ag istegi KAPALI (ban). Yedek dosya: %s" % INAT_YEDEK)
+            print("Israr ediyorsan: python canli_tv_veri.py --inat --zorla")
+        else:
+            try:
+                kanal = inat_kanallari()
+                json.dump({"zaman": time.time(), "kanallar": kanal},
+                          open(INAT_YEDEK, "w", encoding="utf-8"), ensure_ascii=False)
+                print("InatBox yedek yazildi:", len(kanal), "kanal ->", INAT_YEDEK)
+            except Exception as e:
+                print("InatBox cekilemedi (ag engeli olabilir): %s" % e)
+                print("mevcut yedek korundu.")
     else:
         veri = topla(guncelle=True)
         print("kaynaklar:", json.dumps(veri["kaynaklar"], ensure_ascii=False, indent=2))

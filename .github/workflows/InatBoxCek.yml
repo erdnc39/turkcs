@@ -4,8 +4,10 @@
 name: InatBox Kanal Çekici
 
 on:
-  schedule:
-    - cron: "23 */3 * * *"      # 3 saatte bir
+  # * ZAMANLAMA TAMAMEN KALDIRILDI (ban üstüne ban yiyorduk).
+  # * Bu workflow GitHub IP'sinden diziboxen.help'e 3 saatte bir istek atiyordu;
+  # * sunucu hiz limiti koyunca 403/1006 donuyordu.
+  # * Artik SADECE elle calisir: Actions > InatBox Kanal Cekici > Run workflow
   workflow_dispatch:
 
 permissions:
@@ -28,8 +30,8 @@ jobs:
       - name: Bagimliliklari yukle
         run: pip install pycryptodome
 
-      - name: InatBox listesini cek
-        run: python test_sayfasi/canli_tv_veri.py --inat
+      - name: InatBox listesini cek (SADECE elle calistirildiginda)
+        run: python test_sayfasi/canli_tv_veri.py --inat --zorla
 
       - name: Yedegi kaydet
         run: |

@@ -136,6 +136,6 @@ class El(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    PORT = int(os.environ.get("PORT", "8000"))
+    PORT = int(os.environ.get("PORT", "9999"))
     print("Test sunucusu 0.0.0.0:%d -> %s" % (PORT, D), flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), El).serve_forever()
