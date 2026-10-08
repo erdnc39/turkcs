@@ -122,6 +122,66 @@ def kt_dosyasi(dizin):
     return None
 
 
+def _tek_istek(url, timeout=15):
+    """Tek HTTP istegi. (kod, son_adres, govde) doner; hata yerine kod doner."""
+    try:
+        with urllib.request.urlopen(
+                urllib.request.Request(url, headers=HEADERS),
+                timeout=timeout, context=ssl.create_default_context()) as r:
+            return r.status, r.geturl(), ""
+    except urllib.error.HTTPError as e:
+        return e.code, (e.geturl() or url), ""
+    except Exception as e:
+        return type(e).__name__, url, ""
+
+
+def _dizin_engeli_mi(aday):
+    """Dizin URL'si 200 donerken gercek API yollari 403 donuyor mu?
+
+    Cloudflare bazen dizin sayfasina izin verir ama API uc noktasini
+    engeller. Bu durumda 'OK' demek yanlis olur: eklenti calismaz.
+    Ornek: diziboxen.help/CDN/001/002/dizibox/v2  -> 200
+           diziboxen.help/CDN/001/002/dizibox/v2/tv/list1.php -> 403
+    """
+    kod, _, _ = _tek_istek(aday + "/")
+    if kod != 200:
+        return False, None
+    # * Dizin aciliyor; altindaki gercek bir uc noktayi yokla.
+    for alt in ("tv/list1.php", "index.php", "api.php"):
+        kod2, _, _ = _tek_istek(aday.rstrip("/") + "/" + alt)
+        if kod2 in (401, 403, 429, 503):
+            return True, "%s -> HTTP %s" % (alt, kod2)
+    return False, None
+
+
+def gizli_url_bul(dizin):
+    """mainUrl tanimi olmayan eklentilerde saklanan sunucu adresini bulur.
+
+    Bazi eklentiler (InatBox gibi) mainUrl yazmak yerine icerigi
+    `contentUrl` / `apiUrl` gibi bir degiskende HMAC imzali isteklere
+    kullanir. Boyle eklentiler "ATLANDI" diye geciliyordu; oysa sunucu
+    adresi degismis olabilir. Bu yardimci, o degiskeni tarar.
+    """
+    klasor = os.path.join(BASE, dizin, "src", "main", "kotlin")
+    desen = re.compile(
+        r'(?:val|var)\s+(?:contentUrl|apiUrl|baseUrl|siteUrl|hostUrl)\s*=\s*"([^"]+)"')
+    for kok, _, dosyalar in os.walk(klasor):
+        for d in sorted(dosyalar):
+            if not d.endswith(".kt"):
+                continue
+            yol = os.path.join(kok, d)
+            try:
+                icerik = open(yol, encoding="utf-8").read()
+            except Exception:
+                continue
+            m = desen.search(icerik)
+            if m:
+                adres = m.group(1)
+                if adres.startswith("http"):
+                    return adres, yol
+    return None, None
+
+
 def mainurl_bul(yol):
     icerik = open(yol, encoding="utf-8").read()
     m = re.search(r'override\s+var\s+mainUrl\s*=\s*"([^"]+)"', icerik)
@@ -314,16 +374,32 @@ def main():
     )
 
     isler = []
+    gizliler = []
     for d in dizinler:
         kt = kt_dosyasi(d)
         if not kt:
             print(f"[?] {d}: mainUrl'li .kt dosyasi bulunamadi")
             continue
-        isler.append((d, kt, mainurl_bul(kt)))
+        adres = mainurl_bul(kt)
+        if adres is None:
+            # * mainUrl yok: icerik gizli bir degiskende mi? Sunucu adresi
+            # * degismis olabilir, kontrol edelim (AMA ASLA YAZMAYALIM:
+            # * imzali API'lerin adresi elle degistirilince eklenti bozulur).
+            gizli, gizli_kt = gizli_url_bul(d)
+            if gizli:
+                gizliler.append((d, gizli, gizli_kt))
+        isler.append((d, kt, adres))
 
     print(f"{len(isler)} eklenti kontrol ediliyor...\n")
     with ThreadPoolExecutor(max_workers=10) as havuz:
         sonuclar = list(havuz.map(lambda x: kontrol(x[0], x[2]), isler))
+
+    # * Gizli adresleri AYRI isleyerek kontrol et; sonuclari ayri raporla.
+    if gizliler:
+        print(f"{len(gizliler)} eklentide gizli sunucu adresi bulundu, kontrol ediliyor...\n")
+        with ThreadPoolExecutor(max_workers=4) as havuz2:
+            gizli_sonuclar = list(
+                havuz2.map(lambda x: kontrol(x[0], x[1]), gizliler))
 
     degisenler, hatalilar, atlanan, engelli, oluler, tasinmis, sorunsuz = [], [], [], [], [], [], 0
     for s, (d, kt, _) in zip(sonuclar, isler):
@@ -386,6 +462,24 @@ def main():
         for d, s in hatalilar:
             print(f"  {d:20} {s['mainurl']}")
             print(f"  {'':20} {s['durum']}")
+
+    if gizliler:
+        # * BU KISIM SADECE BILDIRIMDIR -- hicbir sey yazilmaz.
+        print("\n### GIZLI SUNUCU ADRESI olan eklentiler (mainUrl tanimi yok) ###")
+        print("    Bu adresler contentUrl/apiUrl gibi imzali isteklerde kullanilir;")
+        print("    OTOMATIK OLARAK DEGISTIRILMEZ, sadece durum bildirilir.")
+        for (d, adres, _), s in zip(gizliler, gizli_sonuclar):
+            # * Dizin 200 donse bile gercek API ucu 403 ise 'OK' yaniltir.
+            dizin_engel, kanit = _dizin_engeli_mi(adres)
+            print(f"  {d:20} {adres}")
+            if dizin_engel:
+                print(f"  {'':20} ENGELLI: dizin 200 donuyor ama API ucu {kanit}")
+                print(f"  {'':20} -> eklenti calismaz; protokol/IP engeli, adres yazilmadi")
+            else:
+                print(f"  {'':20} {s['durum']}")
+            if s.get("adaylar"):
+                print(f"  {'':20} adaylar: {', '.join(s['adaylar'])}")
+                print(f"  {'':20} >>> bunlar SADECE BILDIRIM; eklentiye yazilmadi")
 
     if APPLY and (degisenler or tasinmis):
         print("\n### UYGULANIYOR (--apply) ###")
