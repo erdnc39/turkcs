@@ -13,8 +13,9 @@ import okhttp3.Response
 import org.jsoup.Jsoup
 
 class DiziMom : MainAPI() {
-    // * 2026-10-03: dizimom.help kapandi -> guncel adres dizimom.wiki (canli dogrulandi)
-    override var mainUrl              = "https://www.dizimom.wiki/"
+    // * 2026-10-10: dizimom.wiki ag katmaninda SNI ile engellendi -> calisan adres dizimom.cafe
+    // * (dizimom.com/.net/.org ve eski zarflarin tamami .cafe adresine yonlendiriyor; kanitli)
+    override var mainUrl              = "https://dizimom.cafe"
     override var name                 = "DiziMom"
     override val hasMainPage          = true
     override var lang                 = "tr"
