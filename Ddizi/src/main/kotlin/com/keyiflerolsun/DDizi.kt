@@ -15,7 +15,8 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
 class DDizi : MainAPI() {
-    override var mainUrl              = "https://www.ddizi.im"
+    // * 2026-10-11: ddizi.im ag katmaninda SNI ile engellendi -> calisan adres ddizi.tel (kalip dogrulandi: ul.list_/div.dizi-boxpost + 4 yol)
+    override var mainUrl              = "https://ddizi.tel"
     override var name                 = "DDizi"
     override val hasMainPage          = true
     override var lang                 = "tr"

@@ -17,7 +17,8 @@ private const val PRIVATE_AES_KEY = "9bYMCNQiWsXIYFWYAu7EkdsSbmGBTyUI"
 private val jacksonMapper = ObjectMapper()
 
 class SelcukFlix : MainAPI() {
-    override var mainUrl              = "https://selcukflix.com"
+    // * 2026-10-11: selcukflix.com ag katmaninda SNI ile engellendi -> calisan adres selcukflix.app (kalip dogrulandi: __NEXT_DATA__ + /film/ /dizi/ linkleri)
+    override var mainUrl              = "https://selcukflix.app"
     override var name                 = "SelcukFlix"
     override val hasMainPage          = true
     override var lang                 = "tr"
