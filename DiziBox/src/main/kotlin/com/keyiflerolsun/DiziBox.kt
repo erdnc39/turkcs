@@ -71,16 +71,11 @@ class DiziBox : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        // * 2026-10-12: page=1'de /page/SAYFA/'yi sıyırıp ".../tum-bolumler/" üretmek
+        // * kart=0 döndürüyordu (son bölümler URL'i page/N/ formatinda). Dogru:
+        // * SAYFA yerine her zaman sayfa sayisi -> ".../tum-bolumler/page/1/".
         val rawUrl = request.data
-        val url = if (page == 1) {
-            if (rawUrl.contains("?")) {
-                rawUrl.substringBefore("/page/SAYFA/") + "/?" + rawUrl.substringAfter("?")
-            } else {
-                rawUrl.substringBefore("/page/SAYFA/") + "/"
-            }
-        } else {
-            rawUrl.replace("SAYFA", "$page")
-        }
+        val url = rawUrl.replace("SAYFA", "$page")
 
         val document = app.get(
             url,
