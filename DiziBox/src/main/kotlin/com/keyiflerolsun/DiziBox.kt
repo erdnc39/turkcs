@@ -89,7 +89,11 @@ class DiziBox : MainAPI() {
             cacheTime   = 60
         ).document
 
-        val home = document.select("article.detailed-article, article.article-episode-card a.figure-link")
+        // * 2026-10-12: site WordPress'e tasindi; article.detailed-article /
+        // * article.article-episode-card artik YOK. Yerine a[href*="/diziler/"]
+        // * ve a[href*="/bolum/"] linkleri geliyor. Secici 0 buluyordu -> bos
+        val home = document.select("a[href*=/diziler/], a[href*=/bolum/]")
+            .distinctBy { it.attr("href") }
             .mapNotNull { it.toMainPageResult() }
 
         val isHorizontal = request.name.contains("Bölümler") || request.name.contains("Popüler")

@@ -72,7 +72,7 @@ class InatBox : MainAPI() {
     private val secureRandom = SecureRandom()
     // * AG ANAHTARI: ban üstüne ban yememek icin kapali.
     // * Ban kaldirildiginda (veya hotspot'te tek cekim yapildiktan sonra) false yapilir.
-    private val agKapali = true
+    private val agKapali = false
 
     // * Iki istek arasinda beklenecek minimum sure (ms). diziboxen.help hiz limiti
     // * koyuyor: ardisik isteklerde 403/1006 donuyor ve IP banliyor.

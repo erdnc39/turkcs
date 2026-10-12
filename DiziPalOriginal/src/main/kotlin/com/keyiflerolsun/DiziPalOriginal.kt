@@ -30,8 +30,8 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 class DiziPalOriginal : MainAPI() {
-    // * 2026-10-03: guncel alan adi dizipal1586.com (canli dogrulandi: yeni sablon 4/4 isaret tamam)
-    override var mainUrl              = "https://dizipal1586.com"
+    // * 2026-10-12: dizipal1586 kapandi/tasindi -> guncel alan adi dizipal1588.com (kullanicidan dogrulandi)
+    override var mainUrl              = "https://dizipal1588.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
