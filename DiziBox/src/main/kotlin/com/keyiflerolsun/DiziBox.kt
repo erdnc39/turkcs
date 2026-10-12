@@ -89,11 +89,10 @@ class DiziBox : MainAPI() {
             cacheTime   = 60
         ).document
 
-        // * 2026-10-12: site WordPress'e tasindi; article.detailed-article /
-        // * article.article-episode-card artik YOK. Yerine a[href*="/diziler/"]
-        // * ve a[href*="/bolum/"] linkleri geliyor. Secici 0 buluyordu -> bos
-        val home = document.select("a[href*=/diziler/], a[href*=/bolum/]")
-            .distinctBy { it.attr("href") }
+        // * 2026-10-12: DIZI KARTLARI hala article.article-episode-card + figure.figure-link
+        // * yapisinda. (Ben once a[href*=/diziler/] yapmisim ama o linkler ALFABETIK MENU
+        // * linkleriydi -> yanlis sonuc. Dogrusu article-episode-card.)
+        val home = document.select("article.article-episode-card")
             .mapNotNull { it.toMainPageResult() }
 
         val isHorizontal = request.name.contains("Bölümler") || request.name.contains("Popüler")
@@ -101,11 +100,17 @@ class DiziBox : MainAPI() {
     }
 
     private fun Element.toMainPageResult(): SearchResponse? {
-        val titleEl = this.selectFirst("h3 a")
-        val title   = titleEl?.text() ?: this.selectFirst("img")?.attr("alt") ?: return null
-        val imgEl   = this.selectFirst("img")
+        // * WordPress: <article class="article-episode-card">
+        // *   <figure class="figure-link"> + <img class=afis data-src=poster>
+        // *   <a class="episode-card-title" href="..."><b class=series-name>BASLIK</b>
+        val titleEl = this.selectFirst("a.episode-card-title")
+        val title   = this.selectFirst("b.series-name")?.text()?.trim()
+            ?: titleEl?.text()?.trim()
+            ?: this.selectFirst("img")?.attr("alt") ?: return null
+        val imgEl   = this.selectFirst("img.afis") ?: this.selectFirst("img")
         val imgUrl  = fixUrlNull(imgEl?.attr("data-src")?.takeIf { it.isNotBlank() } ?: imgEl?.attr("src"))
-        val href    = fixUrlNull(titleEl?.attr("href") ?: this.attr("href")) ?: return null
+        val href    = fixUrlNull(titleEl?.attr("href")
+            ?: this.selectFirst("a")?.attr("href")) ?: return null
         val rating  = this.selectFirst("span.label-imdb b")?.text()?.trim()
 
         return newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
