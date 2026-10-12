@@ -70,9 +70,10 @@ class InatBox : MainAPI() {
     private val signingKey = "x7kkk0qmqz63kj68tla5i7u26192v7zqnnddhjgm"
     private var timeOffset = 0L
     private val secureRandom = SecureRandom()
-    // * AG ANAHTARI: ban üstüne ban yememek icin kapali.
-    // * Ban kaldirildiginda (veya hotspot'te tek cekim yapildiktan sonra) false yapilir.
-    private val agKapali = false
+    // * 2026-10-12: tekrar kapali. Benim test isteklerim diziboxen.help'te
+    // * IP banini (1006) derinlestirdi. Ban dusene kadar (24-48 saat) hic istek
+    // * atmak YOK. Ban kalktigi ispatlanmadan false yapilmayacak.
+    private val agKapali = true
 
     // * Iki istek arasinda beklenecek minimum sure (ms). diziboxen.help hiz limiti
     // * koyuyor: ardisik isteklerde 403/1006 donuyor ve IP banliyor.
