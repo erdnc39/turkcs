@@ -341,11 +341,36 @@ def kontrol(eklenti, mainurl):
         sonuc["durum"] = "KAPI (Cloudflare Access login) -> alan adi GUNCEL, guncelleme YAPMA"
         sonuc["engel"] = True
         return sonuc
+
+    # * 2026-10-14: GENEL login/kapi yollari. Sinewix ornegi: site
+    # * ydvfvdizipanel.ru -> /login'e yonlendiriyordu ve SAGLIK bunu "yeni adres"
+    # * sanip mainUrl'ye YAZIYORDU -> eklenti login sayfasina bakardi.
+    # * Login/kayit/sifre yollari ASLA mainUrl olmaz.
+    KAPI_YOLLARI = ("/login", "/giris", "/signin", "/sign-in", "/register",
+                    "/kayit", "/kayit-ol", "/auth", "/account/login",
+                    "/wp-login.php", "/panel", "/admin")
+    alt_yol = sonuc["final"].rstrip("/")
+    if any(alt_yol.endswith(y) or (y + "/") in (alt_yol + "/") or
+           (y + "?") in alt_yol for y in KAPI_YOLLARI):
+        sonuc["durum"] = ("KAPI (login/giris sayfasi: %s) -> alan adi GUNCEL, "
+                          "mainUrl DEGISTIRILMEZ" % alt_yol.split("/")[-1])
+        sonuc["engel"] = True
+        return sonuc
+
+    # * 2026-10-14: sadece "www." / sonundaki "/" farki adres degisikligi DEGILDIR.
+    # * Site zaten yonlendiriyor; mainUrl'yi kozmetik olarak degistirmek bosuna
+    # * version artirip derleme tetikler. Host ayniysa dokunma.
+    def _host(u):
+        return urlparse(u).netloc.lower().removeprefix("www.")
+
     if son == mainurl.rstrip("/"):
-        sonuc.setdefault("durum", "OK")
+        sonuc["durum"] = sonuc.get("durum", "OK")
+        sonuc["degisti"] = False
+    elif _host(sonuc["final"]) == _host(mainurl):
+        sonuc["durum"] = "OK (www/slash farki, host ayni) -> dokunma"
         sonuc["degisti"] = False
     else:
-        sonuc.setdefault("durum", "OK (yönlendirildi)")
+        sonuc["durum"] = sonuc.get("durum", "OK (yönlendirildi)")
         sonuc["degisti"] = True
     return sonuc
 
