@@ -11,6 +11,7 @@ import urllib.error
 import json
 import socket
 import ssl
+import time
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 
@@ -186,6 +187,84 @@ def mainurl_bul(yol):
     icerik = open(yol, encoding="utf-8").read()
     m = re.search(r'override\s+var\s+mainUrl\s*=\s*"([^"]+)"', icerik)
     return m.group(1) if m else None
+
+
+def _kardes_hedef(mainurl):
+    """Ayni ismin .com/.net/.org'u nereye yonlendiriyor?
+
+    Site MARKA DEGISTIREREK tasindiginda (dizimom.cafe -> dizidad.com) isim
+    rotasyonu adayi bulamaz; ama eski ismin populer zarflari genelde yeni
+    adrese yonlendirir. Bu, tasinmanin EN GUCLU sinyalidir.
+    """
+    host = urlparse(mainurl).netloc.lower().removeprefix("www.")
+    m = re.match(r"^([a-z0-9-]+)\.[a-z]{2,6}$", host)
+    if not m:
+        return None
+    isim = m.group(1)
+    if re.search(r"\d{3,}$", isim):
+        return None            # sayi rotasyonlu siteler (dizipalNNNN) kardes tutmaz
+    ctx = ssl.create_default_context()
+    for z in ("com", "net", "org"):
+        if host == ("%s.%s" % (isim, z)):
+            continue
+        try:
+            istek = urllib.request.Request("https://%s/" % ("%s.%s" % (isim, z)),
+                                          headers=HEADERS)
+            with urllib.request.urlopen(istek, timeout=12, context=ctx) as r:
+                son = r.geturl()
+            son_host = urlparse(son).netloc.lower().removeprefix("www.")
+            if son_host and son_host != ("%s.%s" % (isim, z)):
+                return "https://" + son_host
+        except Exception:
+            continue
+    return None
+
+
+def _kt_yollari(dizin):
+    """Eklentinin .kt dosyasindan kategori yollarini cikarir.
+
+    DiziMom gibi siteler MARKA DEGISTIREREK tasinabiliyor (dizimom.cafe ->
+    dizidad.com). Bu durumda isim/zarf rotasyonu adayi BULAMAZ; dogru sinyal
+    .kt'deki yollarin yeni sitede de calismasidir.
+    """
+    klasor = os.path.join(BASE, dizin, "src", "main", "kotlin")
+    yollar = []
+    for kok, _, dosyalar in os.walk(klasor):
+        for d in sorted(dosyalar):
+            if not d.endswith(".kt"):
+                continue
+            try:
+                icerik = open(os.path.join(kok, d), encoding="utf-8").read()
+            except Exception:
+                continue
+            # * "${mainUrl}/yol" seklindeki mainPageOf girdileri
+            for m in re.finditer(r'"\$\{mainUrl\}(/[^"?]+)"', icerik):
+                y = m.group(1)
+                if y != "/" and y not in yollar and "SAYFA" not in y:
+                    yollar.append(y)
+    return yollar[:6]
+
+
+def _yapi_uyuyor(ana, yollar):
+    """Aday sitede eklentinin yollari calisiyor mu? (marka degisiminde tek kanit)"""
+    if not yollar:
+        return False, "yol yok"
+    ctx = ssl.create_default_context()
+    basarili = 0
+    for y in yollar:
+        # * mainPageOf girdileri cogunlukla ".../page/" ile biter; eklenti sona
+        # * sayfa numarasi ekler (".../page/1/"). Gercek istegi taklit et.
+        aday_yol = y if not y.endswith("/") else y + "1/"
+        try:
+            istek = urllib.request.Request(ana.rstrip("/") + aday_yol, headers=HEADERS)
+            with urllib.request.urlopen(istek, timeout=10, context=ctx) as r:
+                gov = r.read(150000).decode("utf-8", "ignore")
+            m = re.search(r"<title[^>]*>(.*?)</title>", gov, re.S | re.I)
+            if r.status == 200 and (not m or "404" not in m.group(1).lower()):
+                basarili += 1
+        except Exception:
+            continue
+    return (basarili >= max(2, len(yollar) // 2)), "%d/%d yol" % (basarili, len(yollar))
 
 
 def _ad_oner(host):
@@ -472,9 +551,30 @@ def main():
 
     if engelli:
         print("\n### ERISIM ENGELI - GUNCELLEME GEREKMEZ (alan adi dogru, site bizi engelliyor) ###")
+        # * SNI testi ek istek atar -> baglantiyi tuketmemek icin sayac.
+        sni_test_sayaci = [0]
         for d, s in engelli:
             print(f"  {d:20} {s['mainurl']}")
             print(f"  {'':20} {s['durum']}")
+            # * SNI/logIN kapisi: site MARKA DEGISTIREREK tasinmis olabilir
+            # * (ornek: dizimom.cafe -> dizidad.com). Kardes zarf adlari nereye
+            # * gidiyor diye bakmak en guclu sinyaldir.
+            # * ONEMLI: bu test ek istek atar; baglantiyi tuketmemek icin
+            # * en fazla 2 eklenti icin ve araliklI yapilir (yoksa diger
+            # * eklentiler URLError alip yanlislikla 'tasinmis' gorunur).
+            if s.get("sni_engelli") and sni_test_sayaci[0] < 2:
+                sni_test_sayaci[0] += 1
+                try:
+                    time.sleep(2)
+                    ana = _kardes_hedef(s["mainurl"])
+                    if ana:
+                        yollar = _kt_yollari(d)
+                        ok, detay = _yapi_uyuyor(ana, yollar)
+                        print(f"  {'':20} KARDES ADRES: {ana}  yapi={'UYUYOR' if ok else 'uymuyor'} ({detay})")
+                        if ok:
+                            print(f"  {'':20} >>> {d} BU ADRESE TASINMIS OLABILIR (elle dogrula + yaz)")
+                except Exception:
+                    pass
 
     if oluler:
         print("\n### OLU ALAN ADI - GERCEK SORUN, INCELEME GEREKIR ###")
