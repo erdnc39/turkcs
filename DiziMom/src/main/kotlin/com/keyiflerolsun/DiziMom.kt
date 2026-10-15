@@ -13,9 +13,9 @@ import okhttp3.Response
 import org.jsoup.Jsoup
 
 class DiziMom : MainAPI() {
-    // * 2026-10-10: dizimom.wiki ag katmaninda SNI ile engellendi -> calisan adres dizimom.cafe
-    // * (dizimom.com/.net/.org ve eski zarflarin tamami .cafe adresine yonlendiriyor; kanitli)
-    override var mainUrl              = "https://dizimom.cafe"
+    // * 2026-10-15: site DiziDAD adiyla tasinmis -> dizimom.com artik www.dizidad.com'a
+    // * yonlendiriyor. Yeni adreste 5 kategori yolu 200 + episode-box dolu + arama calisiyor.
+    override var mainUrl              = "https://www.dizidad.com"
     override var name                 = "DiziMom"
     override val hasMainPage          = true
     override var lang                 = "tr"
