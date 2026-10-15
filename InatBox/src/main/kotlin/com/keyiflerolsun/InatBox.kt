@@ -70,8 +70,9 @@ class InatBox : MainAPI() {
     private val signingKey = "x7kkk0qmqz63kj68tla5i7u26192v7zqnnddhjgm"
     private var timeOffset = 0L
     private val secureRandom = SecureRandom()
-    // * 2026-10-12: ACIK. Kullanici modem reset'i yapacak (IP degisecek, ban kalkacak).
-    // * ONEMLI: sunucuya dakikada en fazla 1 istek. Asla ardisik istek atma!
+    // * 2026-10-15: BAN KALKTI. diziboxen.help imzali istegi 200 + sifreli govde
+    // * ile yanitladi (tek istekle dogrulandi). agKapali=false -> eklenti calisir.
+    // * ONEMLI: dakikada en fazla 1 istek kurali gecerli (istekOncesiBekle asagida).
     private val agKapali = false
 
     // * Iki istek arasinda beklenecek minimum sure (ms). diziboxen.help hiz limiti
