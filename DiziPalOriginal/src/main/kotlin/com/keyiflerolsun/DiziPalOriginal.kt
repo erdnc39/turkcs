@@ -3,8 +3,6 @@
 package com.keyiflerolsun
 
 import android.util.Log
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.fasterxml.jackson.module.kotlin.readValue
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
@@ -30,8 +28,11 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
 class DiziPalOriginal : MainAPI() {
-    // * 2026-10-12: dizipal1586 kapandi/tasindi -> guncel alan adi dizipal1588.com (kullanicidan dogrulandi)
-    override var mainUrl              = "https://dizipal1588.com"
+    // * 2026-10-17: site TAMAMEN yeni tasarima gecti (m3/Modern UI).
+    // * Eski /yeni-eklenen-dizi-bolumler, /hd-film-izle, /kanal/* yollari 404.
+    // * Yeni yollar: /yeni-eklenen-bolumler (a.ep-row), /diziler /filmler /anime (poster karti).
+    // * data-rm-k sifreli video yapisi AYNI kaldi -> loadLinks degismedi.
+    override var mainUrl              = "https://dizipal1820.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -63,306 +64,164 @@ class DiziPalOriginal : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        // * Sitenin "Güncel Bölümler" bolumu (Tumunu Gor -> bu sayfa)
-        "${mainUrl}/yeni-eklenen-dizi-bolumler"     to "Son Bölümler",
-        "${mainUrl}/yabanci-dizi-izle"                 to "Yeni Diziler",
-        "${mainUrl}/hd-film-izle"                                  to "Yeni Filmler",
-        "${mainUrl}/kanal/netflix"                                 to "Netflix",
-        "${mainUrl}/kanal/exxen"                                   to "Exxen",
-        "${mainUrl}/kanal/max"                                     to "Max",
-        "${mainUrl}/kanal/disney"                                  to "Disney+",
-        "${mainUrl}/kanal/amazon"                                  to "Amazon Prime",
-        "${mainUrl}/kanal/tod"                                     to "TOD (beIN)",
-        "${mainUrl}/kanal/tabii"                                   to "Tabii",
-        "${mainUrl}/kanal/hulu"                                    to "Hulu",
-        //"${mainUrl}/diziler?kelime=&durum=&tur=26&type=&siralama=" to "Anime",
-        //"${mainUrl}/diziler?kelime=&durum=&tur=5&type=&siralama="  to "Bilimkurgu Dizileri",
-        //"${mainUrl}/tur/bilimkurgu"                                to "Bilimkurgu Filmleri",
-        //"${mainUrl}/diziler?kelime=&durum=&tur=11&type=&siralama=" to "Komedi Dizileri",
-        //"${mainUrl}/tur/komedi"                                    to "Komedi Filmleri",
-        //"${mainUrl}/diziler?kelime=&durum=&tur=4&type=&siralama="  to "Belgesel Dizileri",
-        //"${mainUrl}/tur/belgesel"                                  to "Belgesel Filmleri",
-        //"${mainUrl}/diziler?kelime=&durum=&tur=25&type=&siralama=" to "Erotik Diziler",
-        //"${mainUrl}/tur/erotik"                                    to "Erotik Filmler",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=1&type=&siralama="  to "Aile",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=2&type=&siralama="  to "Aksiyon",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=3&type=&siralama="  to "Animasyon",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=4&type=&siralama="  to "Belgesel",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=6&type=&siralama="  to "Biyografi",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=7&type=&siralama="  to "Dram",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=8&type=&siralama="  to "Fantastik",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=9&type=&siralama="  to "Gerilim",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=10&type=&siralama=" to "Gizem",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=12&type=&siralama=" to "Korku",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=13&type=&siralama=" to "Macera",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=14&type=&siralama=" to "Müzik",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=16&type=&siralama=" to "Romantik",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=17&type=&siralama=" to "Savaş",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=24&type=&siralama=" to "Yerli",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=18&type=&siralama=" to "Spor",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=19&type=&siralama=" to "Suç",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=20&type=&siralama=" to "Tarih",
-        // "${mainUrl}/diziler?kelime=&durum=&tur=21&type=&siralama=" to "Western",
+        // * Yeni tasarim: bolum listesi tek sayfada (a.ep-row kartlari)
+        "${mainUrl}/yeni-eklenen-bolumler"         to "Son Bölümler",
+        "${mainUrl}/diziler"                       to "Tüm Diziler",
+        "${mainUrl}/filmler"                       to "Tüm Filmler",
+        "${mainUrl}/anime"                         to "Anime",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // Normal sayfalar için sayfa URL'sini ayarla (yabancı-dizi-izle?sayfa=2 gibi)
-        val url = if (page > 1 && !request.data.contains("/kanal/")) {
+        // * Yeni tasarim: sayfalama ?sayfa=N ile
+        val url = if (page > 1) {
             if (request.data.contains("?")) "${request.data}&sayfa=$page" else "${request.data}?sayfa=$page"
         } else {
             request.data
         }
 
         val document = app.get(
-            url, timeout = 10000, interceptor = interceptor, headers = getHeaders(mainUrl)
+            url, timeout = 15000, interceptor = interceptor, headers = getHeaders(mainUrl)
         ).document
 
         val home = mutableListOf<SearchResponse>()
 
-        // 1. HTML içindeki mevcut dizileri al
-        if (!request.data.contains("/kanal/") || page == 1) {
-            if (request.data.contains("/yeni-eklenen-dizi-bolumler")) {
-                // * Yeni eklenen bolumler sayfasi farkli kart yapisi kullanir
-                home.addAll(document.select("a[href*=bolum]").mapNotNull { it.yeniBolumKarti() })
-            } else if (request.data.contains("/yabanci-dizi-izle") || request.data.contains("/hd-film-izle")) {
-                home.addAll(document.select("div.new-added-list div.bg-\\[\\#22232a\\]").mapNotNull { it.sonBolumler() })
-            } else {
-                home.addAll(document.select("div.bg-\\[\\#22232a\\]").mapNotNull { it.diziler() })
-            }
-        }
-
-        // 2. Eğer bir kanal sayfasındaysak, senin verdiğin parametrelerle API'den verileri çek
-        if (request.data.contains("/kanal/")) {
-            // HTML içinden channelId'yi dinamik olarak çekmeye çalışalım (bulamazsak boş göndeririz)
-            val channelIdFromDoc = document.selectFirst("input[name=channelId]")?.attr("value")
-                ?: Regex("""channelId\s*[:=]\s*(\d+)""").find(document.html())?.groupValues?.get(1)
-            val channelSlug = request.data.substringAfterLast("/")
-
-            try {
-                val apiResponse = app.post(
-                    "${mainUrl}/bg/getserielistbychannel",
-                    headers = mapOf(
-                        "Accept" to "application/json, text/javascript, */*; q=0.01",
-                        "X-Requested-With" to "XMLHttpRequest"
-                    ),
-                    referer = request.data,
-                    data = mapOf(
-                        "cKey"       to "c61f91c5141d178450934fe81c0a2029",
-                        "cValue"     to "MTc4NDQwNzIwMDhkMzJhNTc1YzUwOGU1ZjQwMjdjMjIyOWVjOGVhMTcwNGQyM2FjODM2YTI4YTU0NjUyMjI2ZmVjMzFkYzBkMWQyMWY4YzdiNA==",
-                        "curPage"    to page.toString(),
-                        "channelId"  to (channelIdFromDoc ?: "1"), // capture ettiğin veri 1 olduğu için default 1
-                        "languageId" to "2,3,4",
-                        "slug"       to channelSlug // Bazı durumlarda slug da gerekebilir
-                    )
-                )
-
-                val mapper = jacksonObjectMapper()
-                val rootNode = mapper.readTree(apiResponse.text)
-                
-                val htmlNode = rootNode.at("/data/html")
-                if (!htmlNode.isMissingNode) {
-                    val htmlContent = htmlNode.asText()
-                    val parsedDoc = Jsoup.parse(htmlContent)
-                    val apiResults = parsedDoc.select("div.bg-\\[\\#22232a\\]").mapNotNull { it.diziler() }
-
-                    // HTML'de zaten olanları ekleme (tekilleştirme)
-                    apiResults.forEach { res ->
-                        if (home.none { it.url == res.url }) {
-                            home.add(res)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("DiziPalOriginal", "API Hatası: ${e.message}")
-            }
-        }
-
-        // Son bolumler sayfasinda sayfalama calismiyor (?sayfa= ayni icerigi dondurur) -> sonsuz dongu olmasin
-        val hasNext = !request.data.contains("/yeni-eklenen-dizi-bolumler")
-        return newHomePageResponse(request.name, home, hasNext = hasNext && home.isNotEmpty())
-    }
-
-    private fun Element.sonBolumler(): SearchResponse? {
-        val name      = this.selectFirst("img")?.attr("alt") ?: return null
-        val episode   = this.selectFirst("div.episode")?.text()?.trim()
-            ?.replace(". Sezon ", "x")?.replace(". Bölüm", "") ?: ""
-        val title     = if (episode.isNotEmpty()) "$name $episode" else name
-
-        val href      = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src"))
-        val yil       = kartYili()
-        val puan      = kartPuani()
-
-        return newTvSeriesSearchResponse(title, href.substringBefore("/sezon"), TvType.TvSeries) {
-            this.posterUrl = posterUrl
-            this.year      = yil
-            if (puan != null) this.score = Score.from10(puan)
-        }
-    }
-
-    // * Kart altindaki yil: <span class="text-white text-sm">2026</span>
-    private fun Element.kartYili(): Int? = this.select("span.text-white.text-sm")
-        .map { it.text().trim() }
-        .firstOrNull { it.length == 4 && it.all { h -> h.isDigit() } }
-        ?.toIntOrNull()
-
-    // * Kart altindaki IMDB puani: <svg ...yildiz.../> <h4 class="text-sm text-white font-bold"> 7.7 </h4>
-    private fun Element.kartPuani(): Double? {
-        val metin = this.select("h4.text-sm.text-white.font-bold").firstOrNull()?.text()?.trim() ?: return null
-        val deger = metin.replace(",", ".").toDoubleOrNull() ?: return null
-        return if (deger > 0.0) deger else null
-    }
-
-    // * /yeni-eklenen-dizi-bolumler kartlari: <a href="/bolum/slug-1x5" class="... bg-[#1d1d1d]">
-    // * Seri adresi /bolum/ -> /series/ + "-1x5" son eki kaldirilarak uretilir (3/3 dogrulandi)
-    private fun Element.yeniBolumKarti(): SearchResponse? {
-        val rawHref = this.attr("href").ifBlank { this.selectFirst("a")?.attr("href") ?: "" }
-        val href    = fixUrlNull(rawHref) ?: return null
-        if (!href.contains("/bolum/")) return null
-
-        val seri = href.replace("/bolum/", "/series/").replace(Regex("""-\d+x\d+$"""), "")
-
-        val img       = this.selectFirst("img")
-        val title     = img?.attr("alt")?.trim()?.ifBlank { null } ?: return null
-        val srcSet    = img.attr("data-srcset").substringBefore(" ").trim()
-        val posterRaw = if (srcSet.isNotEmpty()) srcSet else img.attr("data-src")
-        val posterUrl = fixUrlNull(posterRaw)
-
-        val bolumEtiket = Regex("""(\d+)x(\d+)""").find(href)?.value
-        val ad = if (bolumEtiket != null) "$title $bolumEtiket" else title
-
-        return newTvSeriesSearchResponse(ad, seri, TvType.TvSeries) { this.posterUrl = posterUrl }
-    }
-
-    private fun Element.diziler(): SearchResponse? {
-        val title     = this.selectFirst("img")?.attr("alt") ?: return null
-        val href      = fixUrlNull(this.selectFirst("a")?.attr("href")) ?: return null
-        val posterUrl = fixUrlNull(this.selectFirst("img")?.attr("data-src"))
-        val yil       = kartYili()
-        val puan      = kartPuani()
-
-        return newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
-            this.posterUrl = posterUrl
-            this.year      = yil
-            if (puan != null) this.score = Score.from10(puan)
-        }
-    }
-
-    private fun SearchItem.toPostSearchResult(): SearchResponse {
-        val title     = this.title
-        val href      = "${mainUrl}/${this.slug}"
-        val posterUrl = this.poster
-        // * arama JSON'undaki IMDB puani -> afis uzerindeki reyting etiketi
-        val puan      = this.imdb
-
-        return if (this.type == "series") {
-            newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
-                this.posterUrl = posterUrl
-                if (puan > 0.0) this.score = Score.from10(puan)
-            }
+        if (request.data.contains("/yeni-eklenen-bolumler")) {
+            // * Bolum listesi: <a href="/dizi/slug/sezon/bolum" class="ep-row" title="... izle">
+            // * Baslik: <a title="..."> icinden; poster: <img data-src|src> / alt
+            home.addAll(document.select("a.ep-row").mapNotNull { it.epRowKarti() })
         } else {
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = posterUrl
-                if (puan > 0.0) this.score = Score.from10(puan)
+            // * Arsiv sayfalari (/diziler /filmler /anime): poster kartlari
+            home.addAll(document.select("a:has(div.poster), a:has(img.poster), div.poster")
+                .mapNotNull { it.posterKarti() })
+            if (home.isEmpty()) {
+                // * yedek: dogrudan poster sinifi tasiyan elemanlar
+                home.addAll(document.select("[class*=poster]").mapNotNull { it.posterKarti() })
             }
+        }
+
+        return newHomePageResponse(request.name, home, hasNext = home.isNotEmpty())
+    }
+
+    // * Yeni tasarim bolum karti:
+    // * <a href="/dizi/slug/3-sezon/4-bolum" class="ep-row ..." title="BASLIK izle">
+    // *   <span class="ep-row-img"><img src="..." alt="BASLIK">
+    private fun Element.epRowKarti(): SearchResponse? {
+        val href = fixUrlNull(this.attr("href")) ?: return null
+        if (!href.contains("/dizi/")) return null
+
+        val img = this.selectFirst("img")
+        val baslik = this.attr("title").removeSuffix(" izle").trim()
+            .ifBlank { img?.attr("alt")?.trim() ?: "" }
+            .ifBlank { return null }
+
+        val poster = fixUrlNull(
+            img?.attr("data-src")?.takeIf { it.isNotBlank() }
+                ?: img?.attr("src")?.takeIf { !it.startsWith("data:") }
+        )
+
+        // * Bolum linkinden seri kok adresi: /dizi/slug/sezon/bolum -> /dizi/slug
+        val seriUrl = href.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
+            ?.let { "${mainUrl}/dizi/$it" } ?: href
+
+        // * Sezon/Bolum bilgisi basliktaki "3. Sezon 4. Bölüm" kismindan
+        val sezon = Regex("""(\d+)\.\s*Sezon""").find(baslik)?.groupValues?.get(1)
+        val bolum = Regex("""(\d+)\.\s*Bölüm""").find(baslik)?.groupValues?.get(1)
+        val etiket = if (sezon != null && bolum != null) " (${sezon}x${bolum})" else ""
+
+        return newTvSeriesSearchResponse(baslik + etiket, seriUrl, TvType.TvSeries) {
+            this.posterUrl = poster
+        }
+    }
+
+    // * Arsiv (dizi/film/anime) poster karti
+    private fun Element.posterKarti(): SearchResponse? {
+        val a = if (this.tagName() == "a") this else this.selectFirst("a") ?: this.closest("a")
+        val href = fixUrlNull(a?.attr("href")) ?: return null
+        if (!href.contains("/dizi/") && !href.contains("/film/")) return null
+
+        val img = this.selectFirst("img") ?: a?.selectFirst("img")
+        val baslik = img?.attr("alt")?.trim()?.ifBlank { null }
+            ?: a?.attr("title")?.removeSuffix(" izle")?.trim()?.ifBlank { null }
+            ?: return null
+
+        val poster = fixUrlNull(
+            img?.attr("data-src")?.takeIf { it.isNotBlank() }
+                ?: img?.attr("src")?.takeIf { !it.startsWith("data:") }
+        )
+        val tip = if (href.contains("/film/")) TvType.Movie else TvType.TvSeries
+
+        return if (tip == TvType.Movie) {
+            newMovieSearchResponse(baslik, href, TvType.Movie) { this.posterUrl = poster }
+        } else {
+            newTvSeriesSearchResponse(baslik, href, TvType.TvSeries) { this.posterUrl = poster }
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-    val responseRaw = app.post(
-        "${mainUrl}/bg/searchcontent",
-        headers = mapOf(
-            "Accept" to "application/json, text/javascript, */*; q=0.01",
-            "X-Requested-With" to "XMLHttpRequest"
-        ),
-        referer = "${mainUrl}/",
-        data = mapOf(
-            "cKey" to "c61f91c5141d178450934fe81c0a2029",
-            "cValue" to "MTc4NDQwNzIwMDhkMzJhNTc1YzUwOGU1ZjQwMjdjMjIyOWVjOGVhMTcwNGQyM2FjODM2YTI4YTU0NjUyMjI2ZmVjMzFkYzBkMWQyMWY4YzdiNA==",
-            "type" to "hepsi", 
-            "searchterm" to query
-        )
-    )
+        // * Yeni tasarim: arama artik HTML ile -> /?s=query  (a.ep-row kartlari)
+        val document = app.get(
+            "${mainUrl}/?s=${query}",
+            timeout = 15000, interceptor = interceptor, headers = getHeaders(mainUrl)
+        ).document
 
-    val mapper = jacksonObjectMapper()
-    val rootNode = mapper.readTree(responseRaw.text)
-    
-    // JSON Pointer ile doğrudan "data" içindeki "result" array'ine iniyoruz
-    val resultArrayNode = rootNode.at("/data/result")
-
-    // Fail-safe: Eğer API değişirse, state false gelirse veya boş dönerse provider'ın crash olmasını engelliyoruz
-    if (resultArrayNode.isMissingNode || !resultArrayNode.isArray) {
-        return emptyList()
+        val sonuc = mutableListOf<SearchResponse>()
+        sonuc.addAll(document.select("a.ep-row").mapNotNull { it.epRowKarti() })
+        if (sonuc.isEmpty()) {
+            sonuc.addAll(document.select("[class*=poster]").mapNotNull { it.posterKarti() })
+        }
+        // * Ayni dizi birden fazla bolumle gelebilir -> tekille
+        return sonuc.distinctBy { it.url }
     }
 
-    // Sadece hedefteki result array'ini SearchItem listesine dönüştürüyoruz
-    val searchItems: List<SearchItem> = mapper.readValue(resultArrayNode.traverse())
-
-    // Idiomatic Kotlin: for döngüsü ve mutable liste yerine "map" ile fonksiyonel ve temiz dönüşüm
-    return searchItems.map { it.toPostSearchResult() }
-}
-    
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun load(url: String): LoadResponse? {
         val document = app.get(url, interceptor = interceptor, headers = getHeaders(mainUrl)).document
 
-        val poster      = document.selectFirst("div.page-top img[alt]")?.attr("src")
-        val year        = document.selectXpath("//div[text()='Yıl']//following-sibling::div").text().trim().toIntOrNull()
-        // * Konu: sayfada <p class="text-white text-base ..."> icinde duruyor (eski "div.summary p" yok)
-        val description = document.selectFirst("p.text-white.text-base")?.text()?.trim()
-            ?: document.selectFirst("meta[name=description]")?.attr("content")?.trim()?.ifBlank { null }
+        // * Yeni tasarimda baslik: <h1>4. Bölüm — 10 Bin Adım (10 Bin Adim) 3. Sezon 4. Bölüm İzle</h1>
+        val h1 = document.selectFirst("h1")?.text()?.trim() ?: ""
+        val poster = document.selectFirst("img[class*=poster]")?.attr("src")
+            ?: document.selectFirst("meta[property=og:image]")?.attr("content")?.trim()?.ifBlank { null }
+        val description = document.selectFirst("meta[name=description]")?.attr("content")?.trim()?.ifBlank { null }
             ?: document.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
-        // * IMDB puani: <div class="key">IMDB Puani</div><div class="value">7.9</div>
-        // * tam eslesme ('IMDB Puani') sayfada 0 sonuc veriyor -> contains kullan
-        val score       = document.selectXpath("//div[contains(text(),'IMDB')]/following-sibling::div[1]")
+        val score = document.selectXpath("//*[contains(text(),'IMDB')]/following-sibling::*[1]")
             .text().trim().ifBlank { null }?.let { Score.from10(it) }
-        val tags        = document.selectXpath("//div[text()='Kategoriler']//following-sibling::div").text().trim().split(" ").map { it.trim() }
-        val duration    = Regex("(\\d+)").find(document.selectXpath("//div[text()='Süre']//following-sibling::div").text())?.value?.toIntOrNull()
 
-        if (url.contains("/series/")) {
-            val title       = document.selectFirst("div.flex h2")?.text() ?: return null
-            val episodeElements = document.select("div.relative.w-full.flex.items-start.gap-4")
-            val episodes = episodeElements.mapNotNull { element ->
-                // 1. Link ve İsim Bilgisi
-                val linkElement = element.selectFirst("a[data-dizipal-pageloader]") ?: return@mapNotNull null
-                val epHref = fixUrlNull(linkElement.attr("href")) ?: return@mapNotNull null
-                val epName = linkElement.selectFirst("h2")?.text()?.trim() ?: "Bölüm"
+        if (url.contains("/dizi/")) {
+            // * Seri adini h1'den turet: "4. Bölüm — 10 Bin Adım (10 Bin Adim) 3. Sezon 4. Bölüm İzle"
+            val temiz = h1.substringAfter("— ").substringBefore(" (")
+                .ifBlank { h1.substringBefore(" izle") }
+                .ifBlank { "Bölüm" }
+                .trim()
+            val seriKok = url.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
+                ?.let { "${mainUrl}/dizi/$it" } ?: url
 
-                // 2. Sezon ve Bölüm Metni (Örn: "1. Sezon 1. Bölüm")
-                val infoText = linkElement.selectFirst("div.text-white.text-sm.opacity-80")?.text()?.trim() ?: ""
-
-                // 3. Regex ile Sayıları Ayıklama (Daha güvenli yöntem)
-                // Bu pattern "1. Sezon 5. Bölüm" gibi bir metinden sayıları çeker.
-                val epSeason = Regex("""(\d+)\.\s*Sezon""").find(infoText)?.groupValues?.get(1)?.toIntOrNull()
-                val epEpisode = Regex("""(\d+)\.\s*Bölüm""").find(infoText)?.groupValues?.get(1)?.toIntOrNull()
-
-                newEpisode(epHref) {
-                    this.name    = epName
-                    this.episode = epEpisode
-                    this.season  = epSeason
+            // * Tum bolumleri listeden topla (hem ep-row kartlari hem dogrudan linkler)
+            val bolumler = document.select("a[href*=/dizi/]").mapNotNull { el ->
+                val href = fixUrlNull(el.attr("href")) ?: return@mapNotNull null
+                val sezon = Regex("""/(\d+)-sezon/""").find(href)?.groupValues?.get(1)?.toIntOrNull()
+                val bolum = Regex("""/(\d+)-bolum/?""").find(href)?.groupValues?.get(1)?.toIntOrNull()
+                if (sezon == null || bolum == null) return@mapNotNull null
+                newEpisode(href) {
+                    this.name    = el.attr("title").removeSuffix(" izle").trim().ifBlank { "Bölüm $bolum" }
+                    this.season  = sezon
+                    this.episode = bolum
                 }
-            }
+            }.distinctBy { it.data }
 
-            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+            return newTvSeriesLoadResponse(temiz, seriKok, TvType.TvSeries, bolumler) {
                 this.posterUrl = poster
-                this.year      = year
                 this.plot      = description
-                this.tags      = tags
-                this.duration  = duration
-                this.score     = score   // * afisteki IMDB puani (yeni surumde gorunur)
+                this.score     = score
             }
-        } else { 
-            val title = document.selectXpath("//div[@class='g-title'][2]/div").text().trim()
+        }
 
-            return newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster
-                this.year      = year
-                this.plot      = description
-                this.tags      = tags
-                this.duration  = duration
-                this.score     = score   // * afisteki IMDB puani (yeni surumde gorunur)
-            }
+        // * Film detay sayfasi
+        val filmBaslik = h1.substringBefore(" izle").ifBlank { document.title() }
+        return newMovieLoadResponse(filmBaslik, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.plot      = description
+            this.score     = score
         }
     }
 
