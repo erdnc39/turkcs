@@ -12,6 +12,7 @@ import json
 import socket
 import ssl
 import time
+import threading
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor
 
@@ -55,6 +56,7 @@ def sni_engelli_mi(host, ip=None):
     import ssl as _ssl
 
     try:
+        _istek_bekle()
         ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = False
         ctx.verify_mode = _ssl.CERT_NONE
@@ -72,6 +74,7 @@ def sni_engelli_mi(host, ip=None):
     # * gordugumuz icin yine de engel VAR sayiyoruz. Aksi halde calisan
     # * bir alan adi 'oldu' sanilir ve eklentiye olen adres yazilir.
     try:
+        _istek_bekle()
         ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = False
         ctx.verify_mode = _ssl.CERT_NONE
@@ -91,6 +94,7 @@ def dns_dogrula(host):
     except Exception:
         pass
     try:
+        _istek_bekle()
         j = json.loads(urllib.request.urlopen(
             "https://dns.google/resolve?name=%s&type=A" % host, timeout=15).read())
         if [a for a in j.get("Answer", []) if a.get("type") == 1]:
@@ -123,8 +127,29 @@ def kt_dosyasi(dizin):
     return None
 
 
+# * ISTEK GECIKMESI: kullanici kurali -> istekler arasi en az 30 saniye.
+# * Ardisik istek sunucuyu (ozellikle diziboxen.help / Cloudflare) kizdirip
+# * IP banina yol aciyor. Bu yuzden TUM istekler bu kapi uzerinden gecer.
+ISTEK_ARASI_GECIKME = 30.0
+_son_istek_zamani = [0.0]
+_istek_kilidi = threading.Lock()
+
+
+def _istek_bekle():
+    """Bir sonraki istekten once 30 sn dolmasini bekler (thread-safe)."""
+    with _istek_kilidi:
+        gecen = time.time() - _son_istek_zamani[0]
+        if gecen < ISTEK_ARASI_GECIKME:
+            time.sleep(ISTEK_ARASI_GECIKME - gecen)
+        _son_istek_zamani[0] = time.time()
+
+
 def _tek_istek(url, timeout=15):
-    """Tek HTTP istegi. (kod, son_adres, govde) doner; hata yerine kod doner."""
+    """Tek HTTP istegi. (kod, son_adres, govde) doner; hata yerine kod doner.
+
+    * Her istekten once 30 sn gecikme uygulanir (ISTEK_ARASI_GECIKME).
+    """
+    _istek_bekle()
     try:
         with urllib.request.urlopen(
                 urllib.request.Request(url, headers=HEADERS),
@@ -210,6 +235,7 @@ def _kardes_hedef(mainurl):
         try:
             istek = urllib.request.Request("https://%s/" % ("%s.%s" % (isim, z)),
                                           headers=HEADERS)
+            _istek_bekle()
             with urllib.request.urlopen(istek, timeout=12, context=ctx) as r:
                 son = r.geturl()
             son_host = urlparse(son).netloc.lower().removeprefix("www.")
@@ -257,6 +283,7 @@ def _yapi_uyuyor(ana, yollar):
         aday_yol = y if not y.endswith("/") else y + "1/"
         try:
             istek = urllib.request.Request(ana.rstrip("/") + aday_yol, headers=HEADERS)
+            _istek_bekle()
             with urllib.request.urlopen(istek, timeout=10, context=ctx) as r:
                 gov = r.read(150000).decode("utf-8", "ignore")
             m = re.search(r"<title[^>]*>(.*?)</title>", gov, re.S | re.I)
@@ -327,6 +354,7 @@ def _ad_oner(host):
     def dene(aday):
         try:
             istek = urllib.request.Request("https://%s/" % aday, headers=HEADERS)
+            _istek_bekle()
             with urllib.request.urlopen(istek, timeout=8, context=ctx) as r:
                 gov = r.read(120000).decode("utf-8", "ignore")
             if "<title" not in gov.lower():
@@ -350,7 +378,7 @@ def _ad_oner(host):
         except Exception:
             return None
 
-    with ThreadPoolExecutor(max_workers=8) as havuz:
+    with ThreadPoolExecutor(max_workers=2) as havuz:
         bulunan = [s for s in havuz.map(dene, adaylar) if s]
     return bulunan[:3]        # * tek tahmin degil, TUM adaylari goster
 
@@ -368,6 +396,7 @@ def kontrol(eklenti, mainurl):
     istek = urllib.request.Request(mainurl, headers=HEADERS)
     ctx = ssl.create_default_context()
     try:
+        _istek_bekle()
         with urllib.request.urlopen(istek, timeout=20, context=ctx) as r:
             sonuc["kod"] = r.status
             sonuc["final"] = r.geturl()
@@ -495,13 +524,13 @@ def main():
         isler.append((d, kt, adres))
 
     print(f"{len(isler)} eklenti kontrol ediliyor...\n")
-    with ThreadPoolExecutor(max_workers=10) as havuz:
+    with ThreadPoolExecutor(max_workers=2) as havuz:
         sonuclar = list(havuz.map(lambda x: kontrol(x[0], x[2]), isler))
 
     # * Gizli adresleri AYRI isleyerek kontrol et; sonuclari ayri raporla.
     if gizliler:
         print(f"{len(gizliler)} eklentide gizli sunucu adresi bulundu, kontrol ediliyor...\n")
-        with ThreadPoolExecutor(max_workers=4) as havuz2:
+        with ThreadPoolExecutor(max_workers=2) as havuz2:
             gizli_sonuclar = list(
                 havuz2.map(lambda x: kontrol(x[0], x[1]), gizliler))
 

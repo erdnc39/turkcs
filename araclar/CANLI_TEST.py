@@ -11,10 +11,28 @@ import os
 import re
 import ssl
 import sys
+import time
+import threading
 import urllib.request
 import urllib.error
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
+
+# * KURAL: istekler arasi en az 30 saniye. Ardışık istek sunucuyu kizdirip
+# * IP banina yol aciyor. Tum istekler _istek_bekle() uzerinden gecer.
+ISTEK_ARASI_GECIKME = 30.0
+_son_istek_zamani = [0.0]
+_istek_kilidi = threading.Lock()
+
+
+def _istek_bekle():
+    """Bir sonraki istekten once 30 sn dolmasini bekler (thread-safe)."""
+    with _istek_kilidi:
+        gecen = time.time() - _son_istek_zamani[0]
+        if gecen < ISTEK_ARASI_GECIKME:
+            print("   [gecikme] %.0f sn bekleniyor..." % (ISTEK_ARASI_GECIKME - gecen))
+            time.sleep(ISTEK_ARASI_GECIKME - gecen)
+        _son_istek_zamani[0] = time.time()
 
 for _aday in (os.path.join(os.environ.get("TEMP", ""), "pylibs"), ""):
     if _aday:
@@ -153,6 +171,8 @@ def analiz_et(dizin):
                          "Referer": main + "/", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"})
         else:
             istek = urllib.request.Request(adres, headers={"User-Agent": UA, "Referer": main + "/"})
+        # * KURAL: istekler arasi en az 30 sn (sunucuyu kizdirip ban yememek icin)
+        _istek_bekle()
         with urllib.request.urlopen(istek, timeout=25, context=CTX) as r:
             html = r.read()
             son["kod"] = r.status
