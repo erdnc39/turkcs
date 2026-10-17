@@ -18,15 +18,22 @@ import urllib.error
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
-# * KURAL: istekler arasi en az 30 saniye. Ardışık istek sunucuyu kizdirip
-# * IP banina yol aciyor. Tum istekler _istek_bekle() uzerinden gecer.
+# * GECIKME: SADECE diziboxen.help (InatBox API) icin 30 saniye.
+# * O sunucu Cloudflare banina cok hassas (ardisik istek -> 1006 kalici IP bani).
+# * Diger siteler icin gecikme YOK; yoksa test gereksiz yere saatlerce surer.
 ISTEK_ARASI_GECIKME = 30.0
+GECIKMELI_HOSTLAR = ("diziboxen.help",)
 _son_istek_zamani = [0.0]
 _istek_kilidi = threading.Lock()
 
 
-def _istek_bekle():
-    """Bir sonraki istekten once 30 sn dolmasini bekler (thread-safe)."""
+def _istek_bekle(url=None):
+    """SADECE gecikmeli hostlar icin: son istekten 30 sn gecmesini bekler.
+
+    url None ise veya host gecikmeli listede degilse hic beklemez.
+    """
+    if not any(h in (url or "").lower() for h in GECIKMELI_HOSTLAR):
+        return
     with _istek_kilidi:
         gecen = time.time() - _son_istek_zamani[0]
         if gecen < ISTEK_ARASI_GECIKME:
@@ -171,8 +178,8 @@ def analiz_et(dizin):
                          "Referer": main + "/", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"})
         else:
             istek = urllib.request.Request(adres, headers={"User-Agent": UA, "Referer": main + "/"})
-        # * KURAL: istekler arasi en az 30 sn (sunucuyu kizdirip ban yememek icin)
-        _istek_bekle()
+        # * SADECE diziboxen.help icin 30 sn gecikme (diger siteler serbest)
+        _istek_bekle(adres)
         with urllib.request.urlopen(istek, timeout=25, context=CTX) as r:
             html = r.read()
             son["kod"] = r.status
