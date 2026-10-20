@@ -41,16 +41,20 @@ HEADERS = {
 
 
 def sni_engelli_mi(host, ip=None):
-    """Baglanti TCP'de kuruluyor ama TLS anonsumunde RST yiyorsa True.
+    """TLS el sikismasi RST yedi mi? 'engel' | 'tasinmis' | 'belirsiz' dondurur.
 
-    Bu bir bot engeli DEGIL. Ag katmani (ISP/DPI) SNI alanini okuyup
-    hedef alan adini engelliyor; tarayici ayni anda acilabiliyor cunku
-    onun TLS yigini farkli. Belirti: SNI'li TLS RST.
+    2026-10-20 DUZELTMESI: Bu fonksiyon eskiden True/False donuyordu ve
+    SNI'siz kontrol de basarisiz olursa YINE True (engel var) diyordu. Bu
+    yuzden TASINMIS bir site ile ISP tarafindan engellenmis bir site
+    ayirt edilemiyordu; her ikisi de "adres GUNCEL, dokunma" oluyordu.
 
-    Boyle bir durumda alan adini 'olu' sanmak yanlistir; adres degismedi.
-    NOT: SNI'siz kontrol grubu Cloudflare'da basarisiz olabilir (Cloudflare
-    SNI'siz istegi reddeder), bu yuzden SNI'li ConnectionResetError tek
-    basina yeterli kanittir.
+    Artik uc durum var:
+      'engel'    -> SNI'siz baglanti BASARILI  => kesin ISP/DPI engeli,
+                    alan adi guncel, dokunma.
+      'tasinmis' -> SNI'siz de RST VE alan adi Cloudflare hata sayfasi
+                    donduruyor => site bu adreste degil, ARA.
+      'belirsiz' -> SNI'siz de RST ama baslik okunamiyor => ARAMA YAP,
+                    sonuc bulunursa tasinmis say.
     """
     import socket as _s
     import ssl as _ssl
@@ -63,27 +67,69 @@ def sni_engelli_mi(host, ip=None):
         with _s.create_connection((host, 443), timeout=10) as c:
             c.settimeout(10)
             with ctx.wrap_socket(c, server_hostname=host):
-                return False          # SNI'li TLS basarili -> engel yok
+                return None           # SNI'li TLS basarili -> engel yok
     except Exception as e:
         if type(e).__name__ != "ConnectionResetError":
-            return False              # sertifika/timeout gibi seyler -> engel degil
+            return None           # sertifika/timeout gibi seyler -> engel degil
 
-    # * SNI'li baglanti RST yedi. Kontrol grubu: SNI gondermeden dene.
-    # * SNI'siz basari = kesin kanit. SNI'siz basarisizlik belirsizdir
-    # * (Cloudflare SNI'siz istegi reddediyor olabilir) ama SNI'li RST
-    # * gordugumuz icin yine de engel VAR sayiyoruz. Aksi halde calisan
-    # * bir alan adi 'oldu' sanilir ve eklentiye olen adres yazilir.
+    # * SNI'li baglanti RST yedi.
+    # * !!! 2026-10-20 KRITIK DERS: SNI'siz kontrol grubuna GUVENME.
+    # * Bu agda SNI'siz TLS rastgele basarili/basarisiz oluyor (ayni host
+    # * 5 denemede 5 kez OK donebiliyor, sonra SSLError). Bu yuzden
+    # * "SNI'siz basarili = kesin ISP engeli" cikarimi YANLIS; dizipal2140
+    # * boylece iki gun 'GUNCEL' sanildi.
+    # * Tek guvenilir sinyal: KOMSU/LARDES adreste canli site olmasi.
+    # * O karar _ad_oner() ile kontrol() icinde verilir. Burada sadece
+    # * "kesin engel degil, arastir" diyoruz.
+    return "belirsiz"
+
+
+def cf_park_mi(host):
+    """Alan adi yayinda mi, yoksa Cloudflare hata sayfasi mi donuyor?
+
+    2026-10-20 DERSI (dizipal2140/1820): site baska numaraya tasindiginda
+    ESKI alan adi DNS'te kalir ve Cloudflare uzerinden yalnizca "Attention
+    Required!" hata sayfasi doner. Bu, TLS'te RST olarak gorunur ve eski
+    `sni_engelli_mi` bunu "SNI engeli -> adres GUNCEL" diye etiketliyordu.
+    Sonuc: tasinmis site sessizce olu kaliyordu.
+
+    Ayirt edici sinyal BASLIKTIR:
+      - "Attention Required! | Cloudflare" -> site burada DEGIL (park/hata)
+      - gercek Turkce baslik               -> site burada, engelleniyor
+    """
     try:
         _istek_bekle(host)
-        ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_CLIENT)
-        ctx.check_hostname = False
-        ctx.verify_mode = _ssl.CERT_NONE
-        with _s.create_connection((host, 443), timeout=10) as c:
-            c.settimeout(10)
-            with ctx.wrap_socket(c):   # server_hostname yok -> SNI gonderilmez
+        istek = urllib.request.Request("https://%s/" % host, headers=HEADERS)
+        with urllib.request.urlopen(istek, timeout=15) as r:
+            baslik = _baslik_oku(r.read(200000).decode("utf-8", "ignore"))
+        if baslik is None:
+            return None            # karar verilemedi
+        al = baslik.lower().strip()
+        # * Cloudflare hata/park sayfalari
+        if "attention required" in al or "just a moment" in al:
+            return True
+        if "cloudflare" in al and "error" in al:
+            return True
+        if al in ("", "403 forbidden", "access denied"):
+            return True
+        return False
+    except urllib.error.HTTPError as e:
+        # * 403 + Cloudflare = site burada degil; 403 + bot korumasi = baslik okunamaz
+        try:
+            gov = e.read(200000).decode("utf-8", "ignore")
+            baslik = _baslik_oku(gov)
+            if baslik and "attention required" in baslik.lower():
                 return True
+        except Exception:
+            pass
+        return None                # belirsiz
     except Exception:
-        return True
+        return None
+
+
+def _baslik_oku(gov):
+    m = re.search(r"<title[^>]*>(.*?)</title>", gov, re.S | re.I)
+    return m.group(1).strip() if m else None
 
 
 def dns_dogrula(host):
@@ -223,6 +269,19 @@ def mainurl_bul(yol):
     icerik = open(yol, encoding="utf-8").read()
     m = re.search(r'override\s+var\s+mainUrl\s*=\s*"([^"]+)"', icerik)
     return m.group(1) if m else None
+
+
+def _host_of(mainurl):
+    """mainUrl -> host (www. temizlenmis)."""
+    return urlparse(mainurl).netloc.lower().removeprefix("www.")
+
+
+def _sayi_rotasyonlu(mainurl):
+    """Host dizipalNNNN gibi sayi ile bitiyor mu?
+
+    Bu sitelerde kardes domain YOKTUR; tek tasinma sinyali numara takibidir.
+    """
+    return bool(re.match(r"^[a-z0-9-]+?\d{3,4}\.[a-z]{2,6}$", _host_of(mainurl)))
 
 
 def _kardes_hedef(mainurl):
@@ -422,36 +481,57 @@ def kontrol(eklenti, mainurl):
         sonuc["durum"] = f"HTTP {e.code}"
         return sonuc
     except Exception as e:
-        # * TCP kuruluyor ama TLS anonsumunde RST yiyorsa bu AG KATMANINDA
-        # * SNI engellemesidir; site saglamdir ve adres dogrudur. Once bunu
-        # * dogruluyoruz, yoksa calisan bir alan adini 'tasinmis' sanip
-        # * olen bir adresle degistirmis olurduk.
-        if sni_engelli_mi(host):
-            sonuc["durum"] = (
-                "AG ENGELI: SNI engellemesi (TLS el sikismasinda RST; alan adi "
-                "TLS icinde okunup engelleniyor) -> alan adi GUNCEL, site sag; "
-                "guncelleme YAPMA. Tarayici/diger aglardan acilabilir.")
-            sonuc["engel"] = True
-            sonuc["sni_engelli"] = True
+        # * TCP kuruluyor ama TLS anonsumunde RST yiyorsa bu ya AG
+        # * KATMANINDA SNI engellemesidir (adres guncel) ya da site
+        # * baska bir numaraya TASINMISTIR (eski alan adi Cloudflare
+        # * hata sayfasi donduruyor).
+        # * 2026-10-20: eskiden burada kosulsuz "dokunma" deniyordu ve
+        # * tasinmis siteler sessizce olu kaliyordu. Artik teşhis uc
+        # * durumlu; 'tasinmis'/'belirsiz' ise ADAY ARAMA devreye girer.
+        sni = sni_engelli_mi(host)
+        if sni is None:
+            # * TLS el sikismasi aslinda basarili -> engel yok; HTTP katmani
+            # * oxucu bir sebeple patladi. Eski davranisa don: DNS'e bak.
+            kanit = dns_dogrula(host)
+            if kanit:
+                oneriler = _ad_oner(host) or []
+                sonuc["durum"] = (
+                    f"SITE YANIT VERMIYOR ({type(e).__name__}) -> DNS {kanit} ile "
+                    f"cozuluyor; adres tasinmis/olmus olabilir"
+                    + (f" | ADAYLAR: {', '.join(oneriler)}" if oneriler else
+                       " | aday bulunamadi"))
+                if oneriler:
+                    sonuc["onerilen_adres"] = "https://" + oneriler[0]
+                    sonuc["adaylar"] = oneriler
+                    sonuc["tasinmis"] = True
+                else:
+                    sonuc["engel"] = True
+            else:
+                sonuc["durum"] = f"ALAN ADI OLU: DNS hic cozulmuyor ({type(e).__name__})"
+                sonuc["olu"] = True
             return sonuc
 
-        kanit = dns_dogrula(host)
-        if kanit:
-            # * DNS cozuluyor ama cevap gelmiyor => bu "ag engeli" DEGILDIR;
-            # * adres tasinmis ya da kapanmis olabilir -> yeni adaylari kendimiz arariz
-            oneriler = _ad_oner(host)
+        # * RST aliyoruz. Karar TLS'e DEGIL, komsu aday sonucuna dayanir:
+        # *   komsu/lardes adayda CANLI site var  -> TASINMIS (yaz)
+        # *   hicbir aday canli degil             -> GERCEK ENGEL (dokunma)
+        # * Bu ayrim hdfilm.us gibi gercekten engellenen ama SAPLAM olan
+        # * sitelerde yanlis pozitif uretmez, cunku onun komsu numarasi yok.
+        oneriler = _ad_oner(host) or []
+        if oneriler:
             sonuc["durum"] = (
-                f"SITE YANIT VERMIYOR ({type(e).__name__}) -> DNS {kanit} ile cozuluyor; "
-                f"adres tasinmis/olmus olabilir"
-                + (f" | ADAYLAR: {', '.join(oneriler)}" if oneriler else " | aday bulunamadi"))
+                "SITE TASINMIS OLABILIR -> eski adres yanit vermiyor ama "
+                "komsu/lardes adreste CANLI site bulundu | ADAYLAR: "
+                + ", ".join(oneriler))
+            sonuc["onerilen_adres"] = "https://" + oneriler[0]
+            sonuc["adaylar"] = oneriler
             sonuc["tasinmis"] = True
-            if oneriler:
-                # * ilk adayi oneri olarak isaretle; gerisi raporda listelenir
-                sonuc["onerilen_adres"] = f"https://{oneriler[0]}"
-                sonuc["adaylar"] = oneriler
         else:
-            sonuc["durum"] = f"ALAN ADI OLU: DNS hic cozulmuyor ({type(e).__name__})"
-            sonuc["olu"] = True
+            sonuc["durum"] = (
+                "AG ENGELI: TLS el sikismasinda RST; hicbir komsu/lardes adayda "
+                "canli site yok -> alan adi GUNCEL kabul edildi, guncelleme "
+                "YAPMA. Tarayici/diger aglardan acilabilir.")
+            sonuc["engel"] = True
+            sonuc["sni_engelli"] = True
         return sonuc
 
     son = sonuc["final"].rstrip("/")
@@ -613,6 +693,29 @@ def main():
                         print(f"  {'':20} KARDES ADRES: {ana}  yapi={'UYUYOR' if ok else 'uymuyor'} ({detay})")
                         if ok:
                             print(f"  {'':20} >>> {d} BU ADRESE TASINMIS OLABILIR (elle dogrula + yaz)")
+                except Exception:
+                    pass
+            # * 2026-10-20: SAYI ROTASYONU eklentisi. Eskiden yalnizca kardes
+            # * zarf adlari deneniyordu; oysa dizipalNNNN gibi sayi rotasyonlu
+            # * sitelerde kardes domain YOKTUR (_kardes_hedef zaten None doner)
+            # * ve tek sinyal numara takibidir. Bu eksiklik yuzunden
+            # * dizipal2140/1820 tasinmasi iki gun boyunca gorulmedi.
+            if s.get("sni_engelli") and _sayi_rotasyonlu(s["mainurl"]):
+                sni_test_sayaci[0] += 1
+                try:
+                    time.sleep(2)
+                    yollar = _kt_yollari(d)
+                    for ana in (_ad_oner(_host_of(s["mainurl"])) or []):
+                        ok, detay = _yapi_uyuyor("https://" + ana, yollar)
+                        if ok:
+                            print(f"  {'':20} ROTASYON ADAYI: https://{ana}  "
+                                  f"yapi=UYUYOR ({detay})")
+                            print(f"  {'':20} >>> {d} BU ADRESE TASINMIS "
+                                  f"(elle dogrula + yaz)")
+                            break
+                        else:
+                            print(f"  {'':20} rotasyon adayi https://{ana} "
+                                  f"uyumsuz ({detay})")
                 except Exception:
                     pass
 
