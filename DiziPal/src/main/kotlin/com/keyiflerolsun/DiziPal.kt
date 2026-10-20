@@ -15,7 +15,9 @@ import android.util.Base64
 class DiziPal : MainAPI() {
     // ! Eski Dizipal sablonu (content-grid / episodes-list-grid / ajax-search) sadece bu adreste calisiyor
     // * 2026-10-15: 2139 SNI engelli -> site 2140'a tasti (5 yol 200, TR baslik dogrulandi)
-    override var mainUrl              = "https://dizipal2140.com"
+    // * 2026-10-20: 2140 oldu -> 2141 (14 yol 200, baslik "Dizipal | yabanci dizi izle, film izle",
+    // *             content-grid 1 + episode-list-item 24 secici dogrulandi)
+    override var mainUrl              = "https://dizipal2141.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"

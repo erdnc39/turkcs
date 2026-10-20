@@ -32,7 +32,9 @@ class DiziPalOriginal : MainAPI() {
     // * Eski /yeni-eklenen-dizi-bolumler, /hd-film-izle, /kanal/* yollari 404.
     // * Yeni yollar: /yeni-eklenen-bolumler (a.ep-row), /diziler /filmler /anime (poster karti).
     // * data-rm-k sifreli video yapisi AYNI kaldi -> loadLinks degismedi.
-    override var mainUrl              = "https://dizipal1820.com"
+    // * 2026-10-20: 1820 oldu -> 1821 (4 yol 200, baslik "Dizipal Orijinal | yabanci dizi ve film izle",
+    // *             /yeni-eklenen-bolumler a.ep-row 104 + /diziler poster 130 secici dogrulandi)
+    override var mainUrl              = "https://dizipal1821.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
