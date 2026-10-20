@@ -22,7 +22,12 @@ class DiziBox : MainAPI() {
     override val hasQuickSearch       = true
     override val supportedTypes       = setOf(TvType.TvSeries)
 
-    override var sequentialMainPage            = true
+    // * 2026-10-20: TIMEOUT DUZELTMESI ("Timed out waiting for 120000 ms",
+    // * Timeout.kt:281). Site sayfalari ~840 KB ve 3-9 sn'de donuyor; 13
+    // * kategori TEK TEK cekilince toplam 100 sn'yi asiyordu ve yavas
+    // * baglantida CloudStream'in 120 sn'lik korutin esigini asiyordu.
+    // * sequentialMainPage=false ile kategoriler PARALEL yuklenir.
+    override var sequentialMainPage            = false
     override var sequentialMainPageDelay       = 200L
     override var sequentialMainPageScrollDelay = 50L
 
@@ -55,27 +60,34 @@ class DiziBox : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "${mainUrl}/tum-bolumler/page/SAYFA/"                        to "Son Bölümler",
-        "${mainUrl}/tum-bolumler/page/SAYFA/?tip=populer"            to "Popüler Diziler",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/"                         to "Yeni Eklenenler",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?ulke[]=turkiye&yil=&imdb" to "Yerli Diziler",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=aksiyon&yil&imdb" to "Aksiyon",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=bilimkurgu&yil&imdb" to "Bilimkurgu",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=komedi&yil&imdb"  to "Komedi",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=dram&yil&imdb"    to "Dram",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=fantastik&yil&imdb" to "Fantastik",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=gerilim&yil&imdb" to "Gerilim",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=korku&yil&imdb"   to "Korku",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=romantik&yil&imdb" to "Romantik",
-        "${mainUrl}/dizi-arsivi/page/SAYFA/?tur[0]=animasyon&yil&imdb" to "Animasyon"
+        // * 2026-10-20: page=1'de "/page/1/" YAZILMAZ. Site bunu 301 ile
+        // * temel yola yonlendiriyor ("/tum-bolumler/page/1/" ->
+        // * "/tum-bolumler/"), yani her kategoride fazladan bir istek +
+        // * ~1.5 sn gecikme olusuyordu (13 kategori = ~20 sn bos kayip).
+        // * page=1 icin temel yol, page>=2 icin "/page/N/" kullanilir.
+        "${mainUrl}/tum-bolumler/SAYFA"                              to "Son Bölümler",
+        "${mainUrl}/tum-bolumler/SAYFA?tip=populer"                  to "Popüler Diziler",
+        "${mainUrl}/dizi-arsivi/SAYFA"                               to "Yeni Eklenenler",
+        "${mainUrl}/dizi-arsivi/SAYFA?ulke[]=turkiye&yil=&imdb"      to "Yerli Diziler",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=aksiyon&yil&imdb"       to "Aksiyon",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=bilimkurgu&yil&imdb"    to "Bilimkurgu",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=komedi&yil&imdb"        to "Komedi",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=dram&yil&imdb"          to "Dram",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=fantastik&yil&imdb"     to "Fantastik",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=gerilim&yil&imdb"       to "Gerilim",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=korku&yil&imdb"         to "Korku",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=romantik&yil&imdb"      to "Romantik",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=animasyon&yil&imdb"     to "Animasyon"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // * 2026-10-12: page=1'de /page/SAYFA/'yi sıyırıp ".../tum-bolumler/" üretmek
-        // * kart=0 döndürüyordu (son bölümler URL'i page/N/ formatinda). Dogru:
-        // * SAYFA yerine her zaman sayfa sayisi -> ".../tum-bolumler/page/1/".
+        // * 2026-10-20: SAYFA yerine "" (page=1) ya da "page/N/" (page>=2).
+        // * page=1'de "/page/1/" yazmak 301 yonlendirme tetikliyordu
+        // * ("/tum-bolumler/page/1/" -> "/tum-bolumler/"): fazladan istek,
+        // * ~1.5 sn gecikme ve bos MB transferi.
         val rawUrl = request.data
-        val url = rawUrl.replace("SAYFA", "$page")
+        val parca  = if (page <= 1) "" else "page/$page/"
+        val url    = rawUrl.replace("SAYFA", parca)
 
         val document = app.get(
             url,
@@ -87,11 +99,41 @@ class DiziBox : MainAPI() {
         // * 2026-10-12: DIZI KARTLARI hala article.article-episode-card + figure.figure-link
         // * yapisinda. (Ben once a[href*=/diziler/] yapmisim ama o linkler ALFABETIK MENU
         // * linkleriydi -> yanlis sonuc. Dogrusu article-episode-card.)
-        val home = document.select("article.article-episode-card")
+        // * 2026-10-20: IKI FARKLI SABLON VAR:
+        // *   /tum-bolumler/  -> article.article-episode-card  (bolum karti)
+        // *   /dizi-arsivi/   -> article.detailed-article      (dizi karti)
+        // * Eskiden yalnizca article-episode-card araniyordu; bu yuzden
+        // * "Yeni Eklenenler / Yerli / Aksiyon / ..." kategorileri BOS
+        // * donuyordu (1 sahte eslesme = sablon). Ikisi de desteklenir.
+        val episodeCards = document.select("article.article-episode-card")
             .mapNotNull { it.toMainPageResult() }
+        val archiveCards = if (episodeCards.isEmpty())
+            document.select("article.detailed-article").mapNotNull { it.toArchiveResult() }
+        else emptyList()
+
+        val home = episodeCards + archiveCards
 
         val isHorizontal = request.name.contains("Bölümler") || request.name.contains("Popüler")
         return newHomePageResponse(listOf(HomePageList(request.name, home, isHorizontal)), home.isNotEmpty())
+    }
+
+    private fun Element.toArchiveResult(): SearchResponse? {
+        // * WordPress: <article class="detailed-article">
+        // *   <figure class="figure big-cover"><a href=<dizi>> + <img class=main-cover>
+        // *   <div class="detailed-article-container"><h3><a href=<dizi>>BASLIK</a></h3>
+        val linkEl = this.selectFirst("div.detailed-article-container h3 a")
+            ?: this.selectFirst("figure a")
+            ?: return null
+        val title = linkEl.text().trim().ifBlank {
+            this.selectFirst("img")?.attr("alt")?.trim().orEmpty()
+        }.ifBlank { return null }
+        val href  = fixUrlNull(linkEl.attr("href")) ?: return null
+        val imgEl = this.selectFirst("img.main-cover") ?: this.selectFirst("img")
+        val img   = fixUrlNull(imgEl?.attr("src"))
+
+        return newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+            this.posterUrl = img
+        }
     }
 
     private fun Element.toMainPageResult(): SearchResponse? {
