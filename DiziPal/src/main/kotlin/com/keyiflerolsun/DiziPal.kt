@@ -17,7 +17,9 @@ class DiziPal : MainAPI() {
     // * 2026-10-15: 2139 SNI engelli -> site 2140'a tasti (5 yol 200, TR baslik dogrulandi)
     // * 2026-10-20: 2140 oldu -> 2141 (14 yol 200, baslik "Dizipal | yabanci dizi izle, film izle",
     // *             content-grid 1 + episode-list-item 24 secici dogrulandi)
-    override var mainUrl              = "https://dizipal2141.com"
+    // * 2026-10-21: 2141 -> 2142 yonlendirmesi (SAGLIK.py 302 yakaladi). 2142: 5 yol 200,
+    // *             /bolumler episode-list-item 24 + /diziler content-grid 1 dogrulandi.
+    override var mainUrl              = "https://dizipal2142.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"
