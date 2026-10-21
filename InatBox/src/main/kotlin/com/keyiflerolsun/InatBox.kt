@@ -64,7 +64,14 @@ class InatBox : MainAPI() {
     private val urlToSearchResponse = mutableMapOf<String, SearchResponse>()
     // * kategori bazli yerel onbellek: url -> (zaman, ham json)
     private val sayfaOnbellek = mutableMapOf<String, Pair<Long, String>>()
-    private val aesKey = "ywevqtjrurkwtqgz" //Master secret and iv key
+    // * 2026-10-21 (Frida ile uygulamadan dogrulandi): AES anahtari SABIT DEGIL.
+    // * Uygulama her istekte rastgele 16 karakter uretiyor, govdeye "1=<aes>&0=<aes>"
+    // * olarak koyuyor; sunucu yaniti BU anahtarla sifreliyor. Eski sabit deger
+    // * ("ywevqtjrurkwtqgz") yuzunden govde hash'i yanlis cikiyor, HMAC imzasi
+    // * tutmuyor ve sunucu 403 "Content could not load" donuyordu.
+    private val aesKeyRastgele: String
+        get() = ByteArray(16).also { secureRandom.nextBytes(it) }
+            .joinToString("") { "%02x".format(it) }.take(16)
 
     // * 2026: istek imzalama anahtari (HMAC-SHA256) ve sunucu saat ofseti
     private val signingKey = "x7kkk0qmqz63kj68tla5i7u26192v7zqnnddhjgm"
@@ -141,26 +148,42 @@ class InatBox : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "${contentUrl}/tv/list1.php"              to "Spor ve Kanallar",
-        "${contentUrl}/tv/list2.php"              to "Kanallar Liste 2",
-        "${contentUrl}/tv/sinema.php"             to "Sinema Kanalları",
-        "${contentUrl}/tv/belgesel.php"           to "Belgesel Kanalları",
-        "${contentUrl}/tv/ulusal.php"             to "Ulusal Kanallar",
-        "${contentUrl}/tv/haber.php"              to "Haber Kanalları",
-        "${contentUrl}/tv/cocuk.php"              to "Çocuk Kanalları",
-        "${contentUrl}/tv/dini.php"               to "Dini Kanallar",
-        "${contentUrl}/ex/index.php"              to "EXXEN",
-        "${contentUrl}/ga/index.php"              to "Gain",
-        "${contentUrl}/nf/index.php"              to "Netflix",
-        "${contentUrl}/dsny/index.php"            to "Disney+",
-        "${contentUrl}/amz/index.php"             to "Amazon Prime",
-        "${contentUrl}/hb/index.php"              to "HBO Max",
-        "${contentUrl}/tbi/index.php"             to "Tabii",
-        "${contentUrl}/film/mubi.php"             to "Mubi",
-        "${contentUrl}/yabanci-dizi/index.php"    to "Yabancı Diziler",
-        "${contentUrl}/yerli-dizi/index.php"      to "Yerli Diziler",
-        "${contentUrl}/film/yerli-filmler.php"    to "Yerli Filmler",
-        "${contentUrl}/film/4k-film-exo.php"      to "4K Film İzle | Exo"
+        // * 2026-10-21: LISTE, uygulamanin ACILISTA yukledigi index'ten cikarildi
+        // * (Frida ile sifreli config cozuldu). 39 kategori; EBA TV (eba.php) HARIC.
+        // * Sadece tv_mode + dizi_mode olanlar alindi (link_mode/destek_mode haric).
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/list1.php"        to "Liste 1 - TR",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/list2.php"        to "Liste 2 - GLB",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/list3.php"        to "Liste 3 - TR",
+        "https://sprboxs.bar/CDN/001/SPR/v2/spor_v3.php"                    to "Spor",
+        "https://sprboxs.bar/CDN/001/SPR/v2/derbiler.php"                   to "Derbiler",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/sinema.php"       to "Sinema",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/belgesel.php"     to "Belgesel",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/ulusal.php"       to "Ulusal",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/haber.php"        to "Haber",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/cocuk.php"        to "Çocuk",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tv/dini.php"         to "Dini",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/ex/index.php"        to "EXXEN",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/ga/index.php"        to "Gain",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/nf/index.php"        to "Netflix",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/hb/index.php"        to "HBO Max",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/dsny/index.php"      to "Disney+",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/amz/index.php"       to "Amazon Prime",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/tbi/index.php"       to "Tabii",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/film/mubi.php"       to "Mubi",
+        "https://sprboxs.bar/CDN/001/SPR/v2/ccc/a/index.php"                to "TOD",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/yabanci-dizi/index.php" to "Yabancı Diziler",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/yerli-dizi/index.php"   to "Yerli Diziler",
+        "https://diziboxen.help/CDN/001/002/dizibox/v2/film/yerli-filmler.php" to "Yerli Filmler",
+        "https://4k.filmizleeeee.cfd/4k/01/public/catalog-exo.php"          to "4K Film 01 | Exo",
+        "https://4k.filmizleeeee.cfd/4k/01/public/catalog-web.php"          to "4K Film 01 | Web",
+        "https://4k.filmizleeeee.cfd/4k/02/public/catalog-web.php"          to "4K Film 02 | Web",
+        "https://4k.filmizleeeee.cfd/4k/03/public/catalog-exo.php"          to "4K Film 03 | Exo",
+        "https://4k.filmizleeeee.cfd/4k/03/public/catalog-web.php"          to "4K Film 03 | Web",
+        "https://4k.filmizleeeee.cfd/4k/04/public/catalog-exo.php"          to "4K Film 04 | Exo",
+        "https://4k.filmizleeeee.cfd/4k/04/public/catalog-web.php"          to "4K Film 04 | Web",
+        "https://4k.filmizleeeee.cfd/4k/06/public/catalog-exo.php"          to "4K Film 06 | Exo",
+        "https://4k.filmizleeeee.cfd/4k/06/public/catalog-web.php"          to "4K Film 06 | Web",
+        "https://4k.filmizleeeee.cfd/4k/07/public/catalog-web.php"          to "4K Film 07 | Web"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -545,8 +568,7 @@ class InatBox : MainAPI() {
             val reg = chContent.chReg
             val type = chContent.chType
 
-            val jsonResponse = runCatching { makeInatRequest(url) }.getOrNull()
-                ?: getJsonFromEncryptedInatResponse(app.get(url).body.string()) ?: return
+            val jsonResponse = runCatching { makeInatRequest(url) }.getOrNull() ?: return
             val firstItem = JSONObject(jsonResponse)
             firstItem.put("chHeaders", headers)
             firstItem.put("chReg", reg)
@@ -617,7 +639,10 @@ class InatBox : MainAPI() {
             return null
         }
 
-        val requestBody = "1=${aesKey}&0=${aesKey}"
+        // * 2026-10-21: anahtar her istekte YENI uretilir (uygulama boyle yapiyor).
+        // * Ayni anahtar hem govdeye yazilir hem yaniti cozmek icin kullanilir.
+        val istekAesKey = aesKeyRastgele
+        val requestBody = "1=${istekAesKey}&0=${istekAesKey}"
         val path = URI(url).path
 
         val interceptor = Interceptor { chain ->
@@ -658,7 +683,7 @@ class InatBox : MainAPI() {
 
             if (response.isSuccessful) {
                 val encryptedResponse = response.body.string()
-                return getJsonFromEncryptedInatResponse(encryptedResponse)
+                return getJsonFromEncryptedInatResponse(encryptedResponse, istekAesKey)
             }
 
             val serverTime = response.headers["x-st"]?.toLongOrNull()
@@ -690,20 +715,23 @@ class InatBox : MainAPI() {
         return mac.doFinal(canonical.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
-    private fun getJsonFromEncryptedInatResponse(response: String): String? {
+    // * 2026-10-21: anahtar artik parametre. Yaniti, ISTEGI IMZALARKEN kullanilan
+    // * anahtarla cozmek ZORUNLU; sabit anahtarla cozme denemesi basarisiz olur.
+    private fun getJsonFromEncryptedInatResponse(response: String, aesKey: String): String? {
         try {
             val algorithm = "AES/CBC/PKCS5Padding"
-            val keySpec = SecretKeySpec(aesKey.toByteArray(), "AES")
+            val keyBytes  = aesKey.toByteArray()
+            val keySpec   = SecretKeySpec(keyBytes, "AES")
 
             // First decryption iteration
             val cipher1 = Cipher.getInstance(algorithm)
-            cipher1.init(Cipher.DECRYPT_MODE, keySpec, IvParameterSpec(aesKey.toByteArray()))
+            cipher1.init(Cipher.DECRYPT_MODE, keySpec, IvParameterSpec(keyBytes))
             val firstIterationData =
                 cipher1.doFinal(Base64.decode(response.split(":")[0], Base64.DEFAULT))
 
             // Second decryption iteration
             val cipher2 = Cipher.getInstance(algorithm)
-            cipher2.init(Cipher.DECRYPT_MODE, keySpec, IvParameterSpec(aesKey.toByteArray()))
+            cipher2.init(Cipher.DECRYPT_MODE, keySpec, IvParameterSpec(keyBytes))
             val secondIterationData = cipher2.doFinal(
                 Base64.decode(
                     String(firstIterationData).split(":")[0],
