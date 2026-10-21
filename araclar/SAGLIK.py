@@ -19,6 +19,24 @@ from concurrent.futures import ThreadPoolExecutor
 # betik artik araclar/ icinde, depo kokunu bir ust dizinden al
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APPLY = "--apply" in sys.argv
+# * --rapor: makine okunur JSON ozet yaz (zamanlanmis gorev bunu okur).
+RAPOR_YAZ = "--rapor" in sys.argv
+
+# * 2026-10-22: GERCEK TARAYICI destegi.
+# * urllib 403/RST alirken Chrome geciyor (TLS parmak izi + HTTP/2).
+# * Playwright kurulu degilse eski davranis korunur (uyari basilir).
+DSH_PROFIL = os.path.join(
+    os.environ.get("LOCALAPPDATA", os.path.expanduser("~\\AppData\\Local")),
+    "ms-playwright", "mcp-chrome-4a3fd07")
+try:
+    import playwright  # noqa: F401
+    TARAYICI_VAR = True
+except ImportError:
+    TARAYICI_VAR = False
+
+# * Chrome profili TEK kullanicilidir; es zamanli launch profili kilitler ve
+# * TargetClosedError verir. Bu kilit tarayici dogrulamalarini siraya sokar.
+_TARAYICI_KILIDI = threading.Lock()
 
 SKIP = {"gradle", "CanliTV", "OxAx", "__Temel", "SineWix", "YouTube",
         "NetflixMirror", "HQPorner", "YeniSite", "build", ".github"}
@@ -453,6 +471,84 @@ def _ad_oner(host):
     return bulunan[:3]        # * tek tahmin degil, TUM adaylari goster
 
 
+def _tarayici_dogrula(url, zaman_asimi_ms=30000):
+    """GERCEK Chrome ile URL'i acar. (basarili_mi, aciklama) doner.
+
+    NEDEN GEREKLI - 2026-10-22 olcumu:
+        urllib TLS parmak izi ve HTTP/2 davranisi sahte oldugu icin Cloudflare
+        bunlari ANINDA yakaliyor:
+            FilmMakinesi        urllib 403  -> Chrome 200, 44 link
+            FullHDFilmizlesene  urllib 403  -> Chrome 200, 171 link
+            HDFilmCehennemi     urllib 403  -> Chrome 200, 314 kart
+            WebteIzle           urllib 403  -> Chrome 200, 82 kart
+            FullHDFilm          TLS RST     -> Chrome 200, 233 kart
+        Yani 403/RST almak "site bizi engelliyor, eklenti calismaz" demek
+        DEGILDIR. 1 aydir bu 5 site icin yanlislikla "guncelleme YAPMA"
+        deniyordu. Artik 403/RST alindiginda gercek tarayici denenir.
+    """
+    if not TARAYICI_VAR:
+        return None, "playwright/chrome yok"
+
+    # * Chrome profili TEK kullanicilidir. 10 is parcacigi ayni anda
+    # * launch_persistent_context cagirinca profil kilitleniyor ve hepsi
+    # * TargetClosedError aliyordu -> tarayici dogrulamasi SIRAYA alinir.
+    with _TARAYICI_KILIDI:
+        try:
+            import asyncio
+            from playwright.async_api import async_playwright
+
+            async def _ac():
+                async with async_playwright() as p:
+                    # * HEADLESS CALISMIYOR (olculdu):
+                    # *   headless=True  -> 403 "Bir dakika lutfen..." (JS challenge)
+                    # *   headless=False -> 200 gercek icerik
+                    # * Bu yuzden tarayici GORUNUR acilir; challenge takilirsa
+                    # * kullanici elle gecer, betik 60 sn bekler.
+                    kwargs = {
+                        "channel": "chrome",
+                        "headless": False,
+                        "args": ["--disable-blink-features=AutomationControlled",
+                                 "--start-minimized"],
+                        "viewport": {"width": 1280, "height": 800},
+                    }
+                    if os.path.isdir(DSH_PROFIL):
+                        kwargs["user_data_dir"] = DSH_PROFIL
+                    ctx = await p.chromium.launch_persistent_context(**kwargs)
+                    try:
+                        sayfa = ctx.pages[0] if ctx.pages else await ctx.new_page()
+                        yanit = await sayfa.goto(url, wait_until="domcontentloaded",
+                                                 timeout=zaman_asimi_ms)
+                        KAPI_BASLIK = ("bir dakika", "just a moment",
+                                       "attention required",
+                                       "checking your browser", "bir saniye")
+                        for _ in range(24):
+                            await sayfa.wait_for_timeout(2500)
+                            bas = (await sayfa.title()) or ""
+                            if not any(k in bas.lower() for k in KAPI_BASLIK):
+                                break
+                        html = await sayfa.content()
+                        bas = (await sayfa.title())[:70]
+                        kod = yanit.status if yanit else None
+                        return kod, bas, len(html)
+                    finally:
+                        await ctx.close()
+
+            kod, baslik, uzunluk = asyncio.run(_ac())
+            KAPI = ("cloudflare access", "sign in", "giris yap", "login",
+                    "just a moment", "checking your browser", "access denied",
+                    "bir dakika")
+            if any(k in baslik.lower() for k in KAPI):
+                return False, 'TARAYICI: KAPI (%s)' % baslik
+            if kod == 200 and uzunluk > 2000:
+                return True, 'TARAYICI: HTTP 200, %d KB, "%s"' % (
+                    uzunluk // 1024, baslik)
+            return False, 'TARAYICI: HTTP %s, %d bayt, "%s"' % (
+                kod, uzunluk, baslik)
+        except Exception as e:
+            return None, "tarayici hatasi: %s: %s" % (
+                type(e).__name__, str(e)[:80])
+
+
 def kontrol(eklenti, mainurl):
     sonuc = {"eklenti": eklenti, "mainurl": mainurl}
     if not mainurl:
@@ -475,7 +571,23 @@ def kontrol(eklenti, mainurl):
         sonuc["final"] = e.geturl() or mainurl
         # 401/403/429/503 = site ayakta ama bizi engelliyor -> alan adi GUNCEL
         if e.code in (401, 403, 429, 503):
-            sonuc["durum"] = f"ERISIM ENGELI (HTTP {e.code}) -> alan adi GUNCEL, bot/koruma"
+            # * 2026-10-22: "engel" demek icin ONCE gercek tarayici denenir.
+            # * urllib 403 alirken Chrome gecebiliyor (TLS parmak izi).
+            ok, kanit = _tarayici_dogrula(mainurl)
+            sonuc["tarayici"] = kanit
+            if ok:
+                sonuc["durum"] = (
+                    f"OK — bot korumasi urllib'i engelliyor (HTTP {e.code}) ama "
+                    f"GERCEK TARAYICI geciyor -> alan adi GUNCEL ve site CANLI | {kanit}")
+                sonuc["degisti"] = False
+                return sonuc
+            if ok is False:
+                sonuc["durum"] = (
+                    f"ERISIM ENGELI (HTTP {e.code}) — tarayici da gecemedi | {kanit}")
+            else:
+                sonuc["durum"] = (
+                    f"ERISIM ENGELI (HTTP {e.code}) -> alan adi GUNCEL, bot/koruma"
+                    f" | tarayici denenemedi: {kanit}")
             sonuc["engel"] = True
             return sonuc
         sonuc["durum"] = f"HTTP {e.code}"
@@ -526,10 +638,22 @@ def kontrol(eklenti, mainurl):
             sonuc["adaylar"] = oneriler
             sonuc["tasinmis"] = True
         else:
+            # * 2026-10-22: RST alindi. urllib/curl TUMDEN engellenmis olabilir
+            # * ama Chrome gecebilir (FullHDFilm tam olarak boyle: TLS RST ->
+            # * Chrome 200, 233 kart). Karar vermeden once tarayici denenir.
+            tok, tkanit = _tarayici_dogrula(mainurl)
+            sonuc["tarayici"] = tkanit
+            if tok:
+                sonuc["durum"] = (
+                    "OK - AG KATMANI engeli (TLS RST) ama GERCEK TARAYICI "
+                    "geciyor -> alan adi GUNCEL ve site CANLI | " + tkanit)
+                sonuc["degisti"] = False
+                return sonuc
             sonuc["durum"] = (
                 "AG ENGELI: TLS el sikismasinda RST; hicbir komsu/lardes adayda "
                 "canli site yok -> alan adi GUNCEL kabul edildi, guncelleme "
-                "YAPMA. Tarayici/diger aglardan acilabilir.")
+                "YAPMA. Tarayici/diger aglardan acilabilir. | tarayici: "
+                + tkanit)
             sonuc["engel"] = True
             sonuc["sni_engelli"] = True
         return sonuc
@@ -765,6 +889,93 @@ def main():
                 f.truncate()
             v = versiyonu_artir(os.path.join(BASE, d, "build.gradle.kts"))
             print(f"  {d}: {eski} -> {yeni} (version={v})")
+
+    # * 2026-10-22: GERCEK EKLENTI TESTI (EK).
+    # * Yukaridaki tum kisim yalnizca "mainUrl canli mi" sorusunu yanitlar.
+    # * Bu, calisan bir eklenti icin GEREKLI ama YETERLI DEGIL:
+    # *   DDizi    301'de POST govdesini kaybediyordu  -> 200 OK gorunuyordu
+    # *   DiziBox  mobil UA'ya KARTSIZ 1682 KB veriyor -> 200 OK gorunuyordu
+    # *   Sinewix  API kaldirilmis, sadece tanitim     -> 200 OK gorunuyordu
+    # * Bu yuzden "SORUNSUZ" raporu eklentinin CALISTIGI anlamina gelmiyordu.
+    # * Artik her kosuda CloudStream'in kendi test kurali da uygulanir.
+    eklenti_testi()
+
+    # * Zamanlanmis gorev "sorun yok" diyip gecmesin: makine okunur ozet.
+    if RAPOR_YAZ:
+        _json_rapor(sonuclar, isler, degisenler, tasinmis, engelli, oluler,
+                    atlanan, hatalilar, sorunsuz)
+
+
+def eklenti_testi():
+    """CloudStream TestingUtils kurallariyla eklentileri test eder."""
+    print("\n" + "=" * 78)
+    print("### GERCEK EKLENTI TESTI (CloudStream kurallari) ###")
+    print("    Bir eklenti ancak ana sayfasi DOLU ve aramasi SONUC VERIYORSA calisir.")
+    print("=" * 78)
+    try:
+        import eklenti_dogrula
+    except ImportError:
+        # araclar/ dizini sys.path'te olmayabilir
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        try:
+            import eklenti_dogrula
+        except ImportError:
+            print("  ! eklenti_dogrula.py bulunamadi, test atlandi")
+            return
+
+    hedefler = eklenti_dogrula.test_edilebilir()
+    basarili, basarisiz = [], []
+    with ThreadPoolExecutor(max_workers=4) as havuz:
+        sonuclar = list(havuz.map(eklenti_dogrula.test_et, hedefler))
+
+    for r in sonuclar:
+        ok = r["durum"] == "BASARILI"
+        (basarili if ok else basarisiz).append(r)
+        print(f"  {r['eklenti']:18} {r['durum']:44} "
+              f"mainpage={r.get('mainpage_toplam', 0):<4} arama={r.get('arama_toplam', 0)}")
+        if not ok:
+            for kat, k, s, hata in r.get("mainpage", []):
+                if k == 0:
+                    print(f"      ANA SAYFA BOS: {kat}  ({hata or '0 kart'}, {s}s)")
+            for q, k, s, hata in r.get("arama", []):
+                if k == 0:
+                    print(f"      ARAMA BOS: \"{q}\"  ({hata or '0 sonuc'}, {s}s)")
+
+    print("-" * 78)
+    print(f"  CALISAN: {len(basarili)}   |   CALISMAYAN: {len(basarisiz)}")
+    if basarisiz:
+        print("  >>> DIKKAT: asagidaki eklentiler mainUrl CANLI olsa bile CALISMIYOR:")
+        for r in basarisiz:
+            print(f"      - {r['eklenti']}: {r['durum']}")
+    print("=" * 78)
+
+
+def _json_rapor(sonuclar, isler, degisenler, tasinmis, engelli, oluler,
+                atlanan, hatalilar, sorunsuz):
+    """Makine okunur ozet — zamanlanmis gorev bunu okuyup karar verir."""
+    yol = os.path.join(BASE, "araclar", "saglik_rapor.json")
+    try:
+        with open(yol, "w", encoding="utf-8") as f:
+            json.dump({
+                "zaman": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "ozet": {
+                    "sorunsuz_mainurl": sorunsuz,
+                    "guncellenebilen": len(degisenler),
+                    "tasinmis": len(tasinmis),
+                    "erisim_engeli": len(engelli),
+                    "olu_dns": len(oluler),
+                    "atlanan": len(atlanan),
+                    "erisilemeyen": len(hatalilar),
+                },
+                "eylem_gerekli": [
+                    {"eklenti": d, "mainurl": s.get("mainurl"),
+                     "onerilen": s.get("onerilen_adres"), "durum": s["durum"]}
+                    for d, s in (tasinmis + oluler)
+                ],
+            }, f, ensure_ascii=False, indent=1)
+        print(f"\nJSON rapor: {yol}")
+    except Exception as e:
+        print(f"\n! JSON rapor yazilamadi: {e}")
 
 
 if __name__ == "__main__":
