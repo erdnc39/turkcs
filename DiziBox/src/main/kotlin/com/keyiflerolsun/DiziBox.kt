@@ -271,11 +271,13 @@ class DiziBox : MainAPI() {
             kotlinx.coroutines.withTimeoutOrNull(8_000L) {
                 app.get(
                     url,
-                    headers     = mapOf(
+                    // * baseHeaders (masaustu UA) ile AJAX basliklari
+                    // * BIRLESTIRILIR; ayni parametreyi iki kez gecmek
+                    // * derleme hatasi verir ("Argument already passed").
+                    headers     = baseHeaders + mapOf(
                         "X-Requested-With" to "XMLHttpRequest",
                         "Referer"          to "$mainUrl/?s=$query"
                     ),
-                    headers     = baseHeaders,
                     cookies     = baseCookies,
                     interceptor = interceptor
                 )
