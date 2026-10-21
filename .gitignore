@@ -28,3 +28,7 @@ test_sayfasi/_*.txt
 test_sayfasi/canli_cache.json
 __pycache__/
 tv_*.png
+
+# Otomasyon raporlari (her kosuda degisir, commit edilmez)
+araclar/saglik_rapor.json
+araclar/tarayici_test_sonuc.json
