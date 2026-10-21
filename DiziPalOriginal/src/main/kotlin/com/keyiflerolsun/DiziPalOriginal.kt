@@ -34,7 +34,9 @@ class DiziPalOriginal : MainAPI() {
     // * data-rm-k sifreli video yapisi AYNI kaldi -> loadLinks degismedi.
     // * 2026-10-20: 1820 oldu -> 1821 (4 yol 200, baslik "Dizipal Orijinal | yabanci dizi ve film izle",
     // *             /yeni-eklenen-bolumler a.ep-row 104 + /diziler poster 130 secici dogrulandi)
-    override var mainUrl              = "https://dizipal1821.com"
+    // * 2026-10-21: 1821 OLDU (TLS ConnectionReset). 1822: 4 yol 200,
+    // *             /yeni-eklenen-bolumler a.ep-row 104 dogrulandi, baslik Turkce.
+    override var mainUrl              = "https://dizipal1822.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
