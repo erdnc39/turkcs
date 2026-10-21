@@ -10,15 +10,21 @@ on:
   workflow_dispatch:
   schedule:
     # * 2026-10-22: 9 saatte bir yerine GUNDE BIR (03:11 UTC).
-    # * Nedeni: onceki akis yalnizca "mainUrl HTTP 200 mu" diye bakiyordu,
-    # * 1 ay boyunca 5 calisan siteyi "erisim engeli, dokunma" diye isaretledi.
-    # * Artik gercek eklenti testi de kosuyor; bu daha uzun suruyor ve
-    # * 9 saatte bir calistirmak rate-limit riski tasiyor.
+    # * Onceki akis yalnizca "mainUrl HTTP 200 mu" diye bakiyordu ve 1 ay
+    # * boyunca 5 CALISAN siteyi "erisim engeli, dokunma" diye isaretledi.
     - cron: 11 3 * * *
 
 jobs:
   EklentiSaglik:
-    runs-on: ubuntu-latest
+    # * 2026-10-22: SELF-HOSTED (yerel makine) ZORUNLU.
+    # * Olcum (ayni gun, ayni kod):
+    # *   GitHub bulut runner : SORUNSUZ 9  | ERISIM ENGELI 10 | CALISAN 2
+    # *   yerel makine+Chrome : SORUNSUZ 19 | ERISIM ENGELI 2  | CALISAN 5
+    # * Sebep 1: bulut runner IP araligi Cloudflare tarafindan biliniyor.
+    # * Sebep 2: runner'da gercek Chrome yok; headless challenge'i gecemiyor
+    # *           (olculdu: headless -> 403 "Bir dakika lutfen").
+    # * 1 aydir otomasyon bu yuzden 10 siteyi "erisim engeli" saniyordu.
+    runs-on: [self-hosted, Windows, X64]
 
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,84 +39,71 @@ jobs:
       - name: Depo Kontrolü
         uses: actions/checkout@v4
 
-      - name: Python Yükle
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Gereksinimleri Yükle
+      - name: Python Kontrolü
+        shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          # * Playwright KURULMAZ: GitHub runner'inda gercek Chrome ile
-          # * Cloudflare challenge'i cozulemez ve headless zaten gecemiyor
-          # * (olculdu: headless -> 403 "Bir dakika lutfen"). SAGLIK.py
-          # * TARAYICI_VAR=False gorunce eski davranisa duser ve bunu
-          # * raporda acikca "tarayici yok" diye yazar.
-          pip install -U setuptools wheel
+          python --version
 
       - name: Sağlık Kontrolü + Gerçek Eklenti Testi
+        shell: pwsh
         run: |
+          # * Yerel makinede Chrome + playwright oldugu icin 403/RST alan
+          # * siteler gercekten dogrulanir. SAGLIK.py TARAYICI_VAR kontrolu
+          # * ile bunu otomatik yapar.
           python araclar/SAGLIK.py --rapor
 
       - name: Raporu Özetle
         if: always()
+        shell: pwsh
         run: |
-          echo "## Eklenti Sağlık Raporu" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          if [ -f araclar/saglik_rapor.json ]; then
-            python - <<'PY' >> $GITHUB_STEP_SUMMARY
-          import json
-          r = json.load(open("araclar/saglik_rapor.json", encoding="utf-8"))
-          print("zaman:", r.get("zaman"))
-          for k, v in (r.get("ozet") or {}).items():
-              print(f"  {k}: {v}")
-          e = r.get("eylem_gerekli") or []
-          if e:
-              print("\nEYLEM GEREKLI:")
-              for x in e:
-                  print(f"  - {x['eklenti']}: {x['durum']}")
-          PY
-          else
-            echo "rapor uretilmedi" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          "## Eklenti Sağlık Raporu" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "``````" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if (Test-Path araclar/saglik_rapor.json) {
+            python araclar/rapor_ozet.py | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          } else {
+            "rapor uretilmedi" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          }
+          "``````" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Değişiklik Kontrolü
         id: degisiklik_kontrol
+        shell: pwsh
         run: |
           # * saglik_rapor.json her kosuda degisir; commit'e DAHIL EDILMEZ.
-          git checkout -- araclar/saglik_rapor.json 2>/dev/null || true
-          if git diff --quiet .; then
-            echo "degisiklik=false" >> $GITHUB_OUTPUT
-          else
-            echo "degisiklik=true" >> $GITHUB_OUTPUT
-          fi
+          git checkout -- araclar/saglik_rapor.json 2>$null
+          git diff --quiet .
+          if ($LASTEXITCODE -eq 0) {
+            "degisiklik=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            "degisiklik=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
 
       - name: Pull Request Oluştur
         if: steps.degisiklik_kontrol.outputs.degisiklik == 'true'
+        shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add -A
-          git reset -- araclar/saglik_rapor.json 2>/dev/null || true
+          git reset -- araclar/saglik_rapor.json 2>$null
 
-          git commit --author="keyiflerolsun <keyiflerolsun@users.noreply.github.com>" \
-            -m "♻️ Domain Değişikliği" \
+          git commit --author="keyiflerolsun <keyiflerolsun@users.noreply.github.com>" `
+            -m "♻️ Domain Değişikliği" `
             -m "🔄 Otomatik tespit edilen alan adı güncellemeleri."
-          BRANCH="domain-degisikligi"
+          $BRANCH = "domain-degisikligi"
 
           git checkout -B $BRANCH
           git push origin $BRANCH --force
 
-          curl -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/pulls \
-            -d @- <<EOF
-          {
-            "title": "♻️ Domain Değişikliği",
-            "head": "$BRANCH",
-            "base": "master",
-            "body": "🔄 Otomatik tespit edilen domain değişiklikleri uygulandı.\n\n📂 Lütfen değişiklikleri gözden geçirin."
-          }
-          EOF
+          $govde = @{
+            title = "♻️ Domain Değişikliği"
+            head  = $BRANCH
+            base  = "master"
+            body  = "🔄 Otomatik tespit edilen domain değişiklikleri uygulandı.`n`n📂 Lütfen değişiklikleri gözden geçirin."
+          } | ConvertTo-Json
+
+          Invoke-RestMethod -Method Post `
+            -Uri "https://api.github.com/repos/$env:REPO_OWNER/$env:REPO_NAME/pulls" `
+            -Headers @{ Authorization = "token $env:GITHUB_TOKEN"; Accept = "application/vnd.github.v3+json" } `
+            -Body $govde

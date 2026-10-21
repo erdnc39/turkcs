@@ -898,12 +898,12 @@ def main():
     # *   Sinewix  API kaldirilmis, sadece tanitim     -> 200 OK gorunuyordu
     # * Bu yuzden "SORUNSUZ" raporu eklentinin CALISTIGI anlamina gelmiyordu.
     # * Artik her kosuda CloudStream'in kendi test kurali da uygulanir.
-    eklenti_testi()
+    eklenti_sonuclari = eklenti_testi()
 
     # * Zamanlanmis gorev "sorun yok" diyip gecmesin: makine okunur ozet.
     if RAPOR_YAZ:
         _json_rapor(sonuclar, isler, degisenler, tasinmis, engelli, oluler,
-                    atlanan, hatalilar, sorunsuz)
+                    atlanan, hatalilar, sorunsuz, eklenti_sonuclari)
 
 
 def eklenti_testi():
@@ -948,10 +948,11 @@ def eklenti_testi():
         for r in basarisiz:
             print(f"      - {r['eklenti']}: {r['durum']}")
     print("=" * 78)
+    return sonuclar
 
 
 def _json_rapor(sonuclar, isler, degisenler, tasinmis, engelli, oluler,
-                atlanan, hatalilar, sorunsuz):
+                atlanan, hatalilar, sorunsuz, eklenti_sonuclari=None):
     """Makine okunur ozet — zamanlanmis gorev bunu okuyup karar verir."""
     yol = os.path.join(BASE, "araclar", "saglik_rapor.json")
     try:
@@ -972,6 +973,16 @@ def _json_rapor(sonuclar, isler, degisenler, tasinmis, engelli, oluler,
                      "onerilen": s.get("onerilen_adres"), "durum": s["durum"]}
                     for d, s in (tasinmis + oluler)
                 ],
+                # * 2026-10-22: "mainUrl canli" != "eklenti calisiyor".
+                # * Gercek test sonucu da rapora girer.
+                "eklenti_testi": {
+                    r["eklenti"]: {
+                        "durum": r["durum"],
+                        "mainpage": r.get("mainpage_toplam", 0),
+                        "arama": r.get("arama_toplam", 0),
+                    }
+                    for r in (eklenti_sonuclari or [])
+                },
             }, f, ensure_ascii=False, indent=1)
         print(f"\nJSON rapor: {yol}")
     except Exception as e:
