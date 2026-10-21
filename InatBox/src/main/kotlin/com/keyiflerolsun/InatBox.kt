@@ -54,12 +54,13 @@ class InatBox : MainAPI() {
     override var lang = "tr"
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Live)
-    // * 20 kategori PARALEL cekiliyordu -> sunucu hizi azarlarsa IP banliyor (403/1006) ve
-    // * TUM LISTELER BOS kaliyordu. Artik sirayla, araliqli cekiyoruz.
-    override var sequentialMainPage = true
-    override var sequentialMainPageDelay = 5000L     // * istekler arasi 5 sn (ban tetiklememek icin)
+    // * 2026-10-21: sequentialMainPage KAPATILDI. 33 kategori tek tek 5 sn arayla
+    // * cekilince ilk acilis 3-5 dakikayi buluyor ve CloudStream TIMEOUT veriyordu.
+    // * Artik kategoriler PARALEL istenir; asil ban korumasi makeInatRequest icindeki
+    // * istekOncesiBekle() (10 sn + dakikalik pencere limiti) tarafindan saglanir.
+    override var sequentialMainPage = false
+    override var sequentialMainPageDelay = 5000L
     override var sequentialMainPageScrollDelay = 100L
-    // * NOT: eski tanim `sequentialMainPage = false` buradan silindi (cift tanim derleme hatasi)
 
     private val urlToSearchResponse = mutableMapOf<String, SearchResponse>()
     // * kategori bazli yerel onbellek: url -> (zaman, ham json)
@@ -84,7 +85,11 @@ class InatBox : MainAPI() {
 
     // * Iki istek arasinda beklenecek minimum sure (ms). diziboxen.help hiz limiti
     // * koyuyor: ardisik isteklerde 403/1006 donuyor ve IP banliyor.
-    private val ISTEK_ARASI_BEKLEME_MS = 8_000L
+    // * 2026-10-21: 8 sn -> 10 sn. Kullanici geri bildirimi: CloudStream acilista
+    // * 33 kategoriyi yuklerken TIMEOUT veriyordu. Bekleme suresi kisaltilamaz
+    // * (ban riski) ama ASAGIDAKI sequentialMainPage KAPATILDI -> kategoriler
+    // * PARALEL cekilir ve toplam sure ciddi sekilde kisaldi.
+    private val ISTEK_ARASI_BEKLEME_MS = 10_000L
 
     // * Bekleme tek basina yetmiyor: kullanici diziler arasinda hizli gezince
     // * (arama yazarken, kategori degistirirken, bolum atlayinca) istek sayisi
