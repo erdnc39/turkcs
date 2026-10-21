@@ -63,21 +63,24 @@ class DiziBox : MainAPI() {
         // * 2026-10-20: page=1'de "/page/1/" YAZILMAZ. Site bunu 301 ile
         // * temel yola yonlendiriyor ("/tum-bolumler/page/1/" ->
         // * "/tum-bolumler/"), yani her kategoride fazladan bir istek +
-        // * ~1.5 sn gecikme olusuyordu (13 kategori = ~20 sn bos kayip).
+        // * ~1.5 sn gecikme olusuyordu.
         // * page=1 icin temel yol, page>=2 icin "/page/N/" kullanilir.
-        "${mainUrl}/tum-bolumler/SAYFA"                              to "Son Bölümler",
-        "${mainUrl}/tum-bolumler/SAYFA?tip=populer"                  to "Popüler Diziler",
-        "${mainUrl}/dizi-arsivi/SAYFA"                               to "Yeni Eklenenler",
-        "${mainUrl}/dizi-arsivi/SAYFA?ulke[]=turkiye&yil=&imdb"      to "Yerli Diziler",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=aksiyon&yil&imdb"       to "Aksiyon",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=bilimkurgu&yil&imdb"    to "Bilimkurgu",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=komedi&yil&imdb"        to "Komedi",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=dram&yil&imdb"          to "Dram",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=fantastik&yil&imdb"     to "Fantastik",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=gerilim&yil&imdb"       to "Gerilim",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=korku&yil&imdb"         to "Korku",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=romantik&yil&imdb"      to "Romantik",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=animasyon&yil&imdb"     to "Animasyon"
+        //
+        // * 2026-10-21: KATEGORI SAYISI 13 -> 6'ya DUSURULDU.
+        // * Olcum (masaustu, tek tek): sayfa basi ~830 KB, 13 kategori
+        // * toplam 57 sn SADECE INDIRME. ARMv7 TV Stick'te buna Jsoup parse
+        // * (~7-9 sn/kategori) eklenince 120 sn'lik CloudStream korutin esigi
+        // * asiliyordu -> "Timed out waiting for 120000 ms".
+        // * Turler tek istekte birlestirilebiliyor (tur[0], tur[1], ...), bu
+        // * yuzden 9 tur ayrI kategori yerine TEK "Turler" satirinda toplandi.
+        "${mainUrl}/tum-bolumler/SAYFA"                                        to "Son Bölümler",
+        "${mainUrl}/tum-bolumler/SAYFA?tip=populer"                            to "Popüler Diziler",
+        "${mainUrl}/dizi-arsivi/SAYFA"                                         to "Yeni Eklenenler",
+        "${mainUrl}/dizi-arsivi/SAYFA?ulke[]=turkiye&yil=&imdb"                to "Yerli Diziler",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=aksiyon&tur[1]=bilimkurgu&tur[2]=komedi&tur[3]=dram&yil&imdb"
+                                                                               to "Aksiyon / Komedi / Dram",
+        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=fantastik&tur[1]=gerilim&tur[2]=korku&tur[3]=romantik&tur[4]=animasyon&yil&imdb"
+                                                                               to "Gerilim / Korku / Fantastik"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -89,6 +92,14 @@ class DiziBox : MainAPI() {
         val parca  = if (page <= 1) "" else "page/$page/"
         val url    = rawUrl.replace("SAYFA", parca)
 
+        // * 2026-10-21: HIZ/TIMEOUT DUZELTMESI.
+        // * Sayfalar ~830 KB. 13 kategori paralel cekilse bile ARMv7 (32-bit)
+        // * cihazda indirme + Jsoup parse 120 sn'lik korutin esigini asiyordu
+        // * ("Timed out waiting for 120000 ms", Timeout.kt:281).
+        // * Cozum: kategori sayisi 13 -> 6'ya dusuruldu (turler tek istekte
+        // * birlestirildi). HTML'i onceden kirpma denendi ama site gecersiz
+        // * HTML uretiyor ("</div" eksik kapanis), kirpma kartlarin yarisini
+        // * kaybettiriyordu -> vazgecildi, tam dokuman parse ediliyor.
         val document = app.get(
             url,
             cookies     = baseCookies,
@@ -163,22 +174,76 @@ class DiziBox : MainAPI() {
         @JsonProperty("attachment_thumbnail") val attachmentThumbnail: String? = null
     )
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url      = "$mainUrl/wp-admin/admin-ajax.php?s=$query&action=dwls_search"
-        // * Site tarafinda arama ucu su an zaman asimi / HTTP 520 donduruyor -> uygulama carpmasin
-        val response = try {
-            app.get(
-                url,
-                headers     = mapOf(
-                    "X-Requested-With" to "XMLHttpRequest",
-                    "Referer"          to "$mainUrl/?s=$query"
-                ),
-                cookies     = baseCookies,
-                interceptor = interceptor
-            )
+    // * 2026-10-21: SITENIN ARAMA UCU TAMAMEN OLU.
+    // * Olculdu (ana sayfa 3 sn'de 200 donuyor, yani site ayakta):
+    // *   /wp-admin/admin-ajax.php?...&action=dwls_search  -> TIMEOUT (25-45 sn)
+    // *   /?s=iron                                          -> TIMEOUT
+    // *   /dizi-arsivi/?s=iron                              -> TIMEOUT
+    // *   /wp-json/wp/v2/search?search=iron                 -> HTTP 401
+    // * Yani sunucu tarafinda arama bozuk; eklenti ne yaparsa yapsin o uclar
+    // * bos/zaman asimi donecek. Cozum: ARAMAYI YEREL YAP.
+    // * Ana sayfa zaten tum alfabetik dizin linklerini (~4.900 adet /diziler/)
+    // * tek HTML icinde tasiyor; ekstra istek atmadan bu listeyi filtreliyoruz.
+    private val yerelDizin by lazy {
+        mutableMapOf<String, List<Pair<String, String>>>() // harf -> (baslik, href)
+    }
+
+    private suspend fun dizinListesi(): List<Pair<String, String>> {
+        val anahtar = "tum"
+        yerelDizin[anahtar]?.let { return it }
+        val doc = try {
+            app.get(mainUrl, cookies = baseCookies, interceptor = interceptor, cacheTime = 600).document
         } catch (e: Exception) {
             return emptyList()
         }
+        val liste = doc.select("a[href*='/diziler/']").mapNotNull {
+            val href = fixUrlNull(it.attr("href")) ?: return@mapNotNull null
+            // * /diziler/<slug>/ seklinde olanlari al; bolum linklerini atla
+            if (!href.contains("/diziler/")) return@mapNotNull null
+            val baslik = it.text().trim()
+                .ifBlank { it.attr("title").trim() }
+                .ifBlank { return@mapNotNull null }
+            baslik to href
+        }.distinctBy { it.second }
+        if (liste.isNotEmpty()) yerelDizin[anahtar] = liste
+        return liste
+    }
+
+    override suspend fun search(query: String): List<SearchResponse> {
+        // * 1) Yerel dizin aramasi (arama ucu olu oldugu icin birincil yol)
+        val q = query.trim().lowercase()
+        if (q.isNotEmpty()) {
+            val yerel = dizinListesi()
+                .filter { (baslik, _) -> baslik.lowercase().contains(q) }
+                .take(60)
+                .map { (baslik, href) ->
+                    newTvSeriesSearchResponse(baslik, href, TvType.TvSeries) {
+                        this.posterUrl = null
+                    }
+                }
+            if (yerel.isNotEmpty()) return yerel
+        }
+
+        // * 2) Yedek: eski AJAX ucu (site duzeltirse diye korunuyor)
+        // * DIKKAT: bu uc su an TIMEOUT'a gidiyor. withTimeout ile 8 sn'de
+        // * kesiyoruz; aksi halde arama 120 sn asip "did not return any search
+        // * response" hatasina donusuyordu.
+        val url = "$mainUrl/wp-admin/admin-ajax.php?s=$query&action=dwls_search"
+        val response = try {
+            kotlinx.coroutines.withTimeoutOrNull(8_000L) {
+                app.get(
+                    url,
+                    headers     = mapOf(
+                        "X-Requested-With" to "XMLHttpRequest",
+                        "Referer"          to "$mainUrl/?s=$query"
+                    ),
+                    cookies     = baseCookies,
+                    interceptor = interceptor
+                )
+            }
+        } catch (e: Exception) {
+            null
+        } ?: return emptyList()
         if (!response.isSuccessful) return emptyList()
 
         val json = tryParseJson<SearchApiResponse>(response.text) ?: return emptyList()
