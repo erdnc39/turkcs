@@ -37,6 +37,27 @@ class DiziBox : MainAPI() {
         "dbxu"          to "1744054959089"
     )
 
+    // * 2026-10-22: MASAUSTU UA ZORUNLU. Olcum (masaustu, ayni URL):
+    // *   CloudStream/4.8.0                -> 200, 840 KB, 31 kart
+    // *   okhttp/4.12.0                    -> 403 YASAK
+    // *   Mozilla/5.0 (Linux; Android 14)  -> 200, 1682 KB, 0 KART  <- BOS!
+    // *   Mozilla/5.0 (Windows NT 10.0...) -> 200, 840 KB, 31 kart
+    // * Site MOBIL ziyaretciye tam boyutlu ama KARTSIZ sayfa veriyor
+    // * (icerik JavaScript ile geliyor, Jsoup calistiramaz) -> log'daki
+    // * "Provider DiziBox does not have any items in a homepage row!".
+    // * OkHttp'nin kendi UA'si ise dogrudan 403 yiyor. Bu yuzden masaustu
+    // * UA'si acikca gonderilir.
+    private val masaustuUa =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+    private val baseHeaders = mapOf(
+        "User-Agent"                to masaustuUa,
+        "Accept"                    to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language"           to "tr-TR,tr;q=0.9,en;q=0.8",
+        "Upgrade-Insecure-Requests" to "1"
+    )
+
     private val cloudflareKiller by lazy { CloudflareKiller() }
     private val interceptor      by lazy { CloudflareInterceptor(cloudflareKiller) }
 
@@ -114,6 +135,7 @@ class DiziBox : MainAPI() {
         // * kategori ayni dokumani cache'ten alir (~0 ms).
         val document = app.get(
             url,
+            headers     = baseHeaders,
             cookies     = baseCookies,
             interceptor = interceptor,
             cacheTime   = 60
@@ -208,7 +230,7 @@ class DiziBox : MainAPI() {
         val anahtar = "tum"
         yerelDizin[anahtar]?.let { return it }
         val doc = try {
-            app.get(mainUrl, cookies = baseCookies, interceptor = interceptor, cacheTime = 600).document
+            app.get(mainUrl, headers = baseHeaders, cookies = baseCookies, interceptor = interceptor, cacheTime = 600).document
         } catch (e: Exception) {
             return emptyList()
         }
@@ -253,6 +275,7 @@ class DiziBox : MainAPI() {
                         "X-Requested-With" to "XMLHttpRequest",
                         "Referer"          to "$mainUrl/?s=$query"
                     ),
+                    headers     = baseHeaders,
                     cookies     = baseCookies,
                     interceptor = interceptor
                 )
@@ -276,6 +299,7 @@ class DiziBox : MainAPI() {
     override suspend fun load(url: String): LoadResponse? {
         var document = app.get(
             url,
+            headers     = baseHeaders,
             cookies     = baseCookies,
             interceptor = interceptor
         ).document
@@ -285,6 +309,7 @@ class DiziBox : MainAPI() {
             val redirectUrl = fixUrlNull(archiveLink) ?: url
             document = app.get(
                 redirectUrl,
+                headers     = baseHeaders,
                 cookies     = baseCookies,
                 interceptor = interceptor
             ).document
@@ -307,6 +332,7 @@ class DiziBox : MainAPI() {
         seasonLinks.forEach { seasonUrl ->
             val seasonDoc = app.get(
                 seasonUrl,
+                headers     = baseHeaders,
                 cookies     = baseCookies,
                 interceptor = interceptor
             ).document
@@ -364,6 +390,7 @@ class DiziBox : MainAPI() {
     ): Boolean {
         val document = app.get(
             data,
+            headers     = baseHeaders,
             cookies     = baseCookies,
             interceptor = interceptor
         ).document
@@ -400,6 +427,7 @@ class DiziBox : MainAPI() {
         sources.forEach { sourceUrl ->
             val sourceDoc = app.get(
                 sourceUrl,
+                headers     = baseHeaders,
                 cookies     = baseCookies,
                 interceptor = interceptor
             ).document
@@ -430,6 +458,7 @@ class DiziBox : MainAPI() {
                 val playerDoc = app.get(
                     playerUrl,
                     referer     = sourceUrl,
+                    headers     = baseHeaders,
                     cookies     = baseCookies,
                     interceptor = interceptor
                 ).document
@@ -471,6 +500,7 @@ class DiziBox : MainAPI() {
                 val subDoc  = app.get(
                     kingUrl,
                     referer     = referer,
+                    headers     = baseHeaders,
                     cookies     = baseCookies,
                     interceptor = interceptor
                 ).document
@@ -503,6 +533,7 @@ class DiziBox : MainAPI() {
                 var subDoc = app.get(
                     molyUrl,
                     referer     = referer,
+                    headers     = baseHeaders,
                     cookies     = baseCookies,
                     interceptor = interceptor
                 ).document
