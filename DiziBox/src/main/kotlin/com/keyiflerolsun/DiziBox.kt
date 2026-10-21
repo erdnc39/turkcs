@@ -73,14 +73,21 @@ class DiziBox : MainAPI() {
         // * asiliyordu -> "Timed out waiting for 120000 ms".
         // * Turler tek istekte birlestirilebiliyor (tur[0], tur[1], ...), bu
         // * yuzden 9 tur ayrI kategori yerine TEK "Turler" satirinda toplandi.
+        // * 2026-10-22: KATEGORI SAYISI 6 -> 2'ye DUSURULDU.
+        // * OLCUM (masaustu, tek tek, 2 sn arayla):
+        // *   /tum-bolumler/                                 6.64s  1682 KB
+        // *   /tum-bolumler/?tip=populer                     6.64s  1682 KB
+        // *   /dizi-arsivi/                                  7.03s  1682 KB
+        // *   /dizi-arsivi/?ulke[]=turkiye&yil=&imdb         7.53s  1682 KB
+        // *   /dizi-arsivi/?tur[0]=aksiyon...                7.09s  1682 KB
+        // *   /dizi-arsivi/?tur[0]=fantastik...             12.30s  1682 KB
+        // * HEPSI TAM 1682 KB -> sorgu parametrelerinin HICBIRI calismiyor,
+        // * site her istekte AYNI ana sayfayi donduruyor. Yani 6 kategori,
+        // * ayni 1.6 MB'lik sayfanin 6 kez indirilmesiydi: 47 sn, sifir ek
+        // * bilgi. Hem timeout'un hem "kategoriler ayni" sikayetinin sebebi bu.
+        // * Artik TEK istek yapilir, tekrarlar baslik bazinda elenir.
         "${mainUrl}/tum-bolumler/SAYFA"                                        to "Son Bölümler",
-        "${mainUrl}/tum-bolumler/SAYFA?tip=populer"                            to "Popüler Diziler",
-        "${mainUrl}/dizi-arsivi/SAYFA"                                         to "Yeni Eklenenler",
-        "${mainUrl}/dizi-arsivi/SAYFA?ulke[]=turkiye&yil=&imdb"                to "Yerli Diziler",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=aksiyon&tur[1]=bilimkurgu&tur[2]=komedi&tur[3]=dram&yil&imdb"
-                                                                               to "Aksiyon / Komedi / Dram",
-        "${mainUrl}/dizi-arsivi/SAYFA?tur[0]=fantastik&tur[1]=gerilim&tur[2]=korku&tur[3]=romantik&tur[4]=animasyon&yil&imdb"
-                                                                               to "Gerilim / Korku / Fantastik"
+        "${mainUrl}/dizi-arsivi/SAYFA"                                         to "Dizi Arşivi"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -100,6 +107,11 @@ class DiziBox : MainAPI() {
         // * birlestirildi). HTML'i onceden kirpma denendi ama site gecersiz
         // * HTML uretiyor ("</div" eksik kapanis), kirpma kartlarin yarisini
         // * kaybettiriyordu -> vazgecildi, tam dokuman parse ediliyor.
+        // * 2026-10-22: TEK ISTEK + TEKRAR ELEME.
+        // * Site sorgu parametrelerini yok sayiyor (hepsi 1682 KB, ayni ana
+        // * sayfa). Bu yuzden kategori basina ayri indirme tamamen bosa
+        // * gidiyordu. Ustteki ana sayfa HTML'i 60 sn cache'lenir; ikinci
+        // * kategori ayni dokumani cache'ten alir (~0 ms).
         val document = app.get(
             url,
             cookies     = baseCookies,
@@ -122,7 +134,11 @@ class DiziBox : MainAPI() {
             document.select("article.detailed-article").mapNotNull { it.toArchiveResult() }
         else emptyList()
 
-        val home = episodeCards + archiveCards
+        // * 2026-10-22: TEKRAR ELEME. Site ayni sayfayi dondurdugu icin
+        // * ayni dizi/bolum birden fazla kartta cikabiliyor. CloudStream
+        // * ayni basligi tekrar tekrar gosteriyordu.
+        val home = (episodeCards + archiveCards)
+            .distinctBy { it.name.lowercase().trim() }
 
         val isHorizontal = request.name.contains("Bölümler") || request.name.contains("Popüler")
         return newHomePageResponse(listOf(HomePageList(request.name, home, isHorizontal)), home.isNotEmpty())
