@@ -16,7 +16,7 @@ import org.jsoup.nodes.Element
 
 class DDizi : MainAPI() {
     // * 2026-10-11: ddizi.im ag katmaninda SNI ile engellendi -> calisan adres ddizi.tel (kalip dogrulandi: ul.list_/div.dizi-boxpost + 4 yol)
-    override var mainUrl              = "https://ddizi.tel"
+    override var mainUrl              = "https://www.ddizi.tel"
     override var name                 = "DDizi"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -24,7 +24,7 @@ class DDizi : MainAPI() {
     override val supportedTypes       = setOf(TvType.TvSeries)
 
     override val mainPage = mainPageOf(
-        "$mainUrl/yeni-eklenenler1"  to "Son Eklenen Bölümler",
+        "$mainUrl/yeni-eklenenler8"  to "Son Eklenen Bölümler",
         "$mainUrl/yabanci-dizi-izle" to "Yabancı Diziler",
         "$mainUrl"                   to "Yerli Diziler",
         "$mainUrl/eski.diziler"      to "Eski Diziler"

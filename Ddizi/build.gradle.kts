@@ -1,4 +1,4 @@
-version = 23
+version = 24
 cloudstream {
     authors     = listOf("keyiflerolsun")
     language    = "tr"
@@ -13,5 +13,5 @@ cloudstream {
     **/
     status  = 1 // will be 3 if unspecified
     tvTypes = listOf("TvSeries")
-    iconUrl = "https://www.ddizi.im/favicon.ico"
+    iconUrl = "https://www.ddizi.tel/favicon.ico"
 }
