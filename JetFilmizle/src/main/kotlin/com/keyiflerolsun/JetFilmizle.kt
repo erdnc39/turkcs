@@ -10,7 +10,9 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 
 class JetFilmizle : MainAPI() {
-    override var mainUrl              = "https://jetfilmizle.now"
+    // * 2026-10-23: .now -> .app kanonik adres (SAGLIK.py 302 yakaladi). .app: 6 yol HTTP 200,
+    // *             div.film-card secici 48-107 kart, baslik "JetFilmizle - Film Izle..." dogrulandi.
+    override var mainUrl              = "https://jetfilmizle.app"
     override var name                 = "JetFilmizle"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -66,10 +68,14 @@ class JetFilmizle : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.post(
-            "${mainUrl}/arama?q=",
-            referer = "${mainUrl}/",
-            data    = mapOf("s" to query)
+        // * 2026-10-23: .app tasariminda arama POST DEGIL GET. Formu ölçüldü:
+        // *   <form action="/arama" method="GET"><input name="q"></form>
+        // * Eski POST /arama?q= + data=mapOf("s" to query) .app'de 404 donuyordu.
+        // * GET /arama?q=<sorgu> -> HTTP 200, div.film-card 48 kart (dogrulandi).
+        val q = java.net.URLEncoder.encode(query, "UTF-8")
+        val document = app.get(
+            "${mainUrl}/arama?q=$q",
+            referer = "${mainUrl}/"
         ).document
 
         return document.select("div.film-card").mapNotNull { it.toSearchResult() }
