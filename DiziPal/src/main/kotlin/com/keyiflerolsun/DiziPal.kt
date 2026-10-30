@@ -22,7 +22,9 @@ class DiziPal : MainAPI() {
     // * 2026-10-24: 2142 RST/olu -> 2143. 2143: TLS OK (2142 RST), 6 yol 200 (bolumler/diziler/
     // *             filmler/netflix/exxen), /bolumler episode-list-item 24, /dizi h1.series-title 1
     // *             + detail-episode-item-wrap 6 + info-row 4, ajax-search {"success":true}.
-    override var mainUrl              = "https://dizipal2143.com"
+    // * 2026-10-30: 2143 -> 2145 (SAGLIK.py 302 yakaladi). 2145: 4 yol HTTP 200, /bolumler
+    // *             episode-list-item 24, /diziler + /filmler content-grid 24, /platform/netflix 20.
+    override var mainUrl              = "https://dizipal2145.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"
