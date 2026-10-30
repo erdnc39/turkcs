@@ -36,7 +36,12 @@ class DiziPalOriginal : MainAPI() {
     // *             /yeni-eklenen-bolumler a.ep-row 104 + /diziler poster 130 secici dogrulandi)
     // * 2026-10-21: 1821 OLDU (TLS ConnectionReset). 1822: 4 yol 200,
     // *             /yeni-eklenen-bolumler a.ep-row 104 dogrulandi, baslik Turkce.
-    override var mainUrl              = "https://dizipal1822.com"
+    // * 2026-10-30: 1822 -> 1823 (SAGLIK.py 302 yakaladi). TASARIM DEGISTI: eski a.ep-row /
+    // *             .poster / a.ep-row siniflari KALDIRILDI. Yeni yapi:
+    // *             arsiv kartlari a.tc (aria-label "Baslik, 2026, Tur, IMDb 7.7"),
+    // *             bolum kartlari a.ecl / a.mwr (aria-label "Baslik, 4. Sezon 1. Bolum").
+    // *             Olculen: /diziler a.tc 54, /filmler 16, /anime 60, /yeni-eklenen-bolumler a.ecl+mwr.
+    override var mainUrl              = "https://dizipal1823.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -90,31 +95,30 @@ class DiziPalOriginal : MainAPI() {
         val home = mutableListOf<SearchResponse>()
 
         if (request.data.contains("/yeni-eklenen-bolumler")) {
-            // * Bolum listesi: <a href="/dizi/slug/sezon/bolum" class="ep-row" title="... izle">
-            // * Baslik: <a title="..."> icinden; poster: <img data-src|src> / alt
-            home.addAll(document.select("a.ep-row").mapNotNull { it.epRowKarti() })
+            // * 2026-10-30: yeni tasarim bolum kartlari a.ecl / a.mwr (aria-label tabanli)
+            home.addAll(document.select("a.ecl, a.mwr").mapNotNull { it.epRowKarti() })
         } else {
-            // * Arsiv sayfalari (/diziler /filmler /anime): poster kartlari
-            home.addAll(document.select("a:has(div.poster), a:has(img.poster), div.poster")
-                .mapNotNull { it.posterKarti() })
+            // * 2026-10-30: arsiv sayfalari (/diziler /filmler /anime) -> a.tc kartlari
+            home.addAll(document.select("a.tc").mapNotNull { it.posterKarti() })
             if (home.isEmpty()) {
-                // * yedek: dogrudan poster sinifi tasiyan elemanlar
-                home.addAll(document.select("[class*=poster]").mapNotNull { it.posterKarti() })
+                home.addAll(document.select("a[href*=/dizi/], a[href*=/film/]")
+                    .mapNotNull { it.posterKarti() })
             }
         }
 
         return newHomePageResponse(request.name, home, hasNext = home.isNotEmpty())
     }
 
-    // * Yeni tasarim bolum karti:
-    // * <a href="/dizi/slug/3-sezon/4-bolum" class="ep-row ..." title="BASLIK izle">
-    // *   <span class="ep-row-img"><img src="..." alt="BASLIK">
+    // * 2026-10-30 yeni tasarim bolum karti:
+    // * <a href="/dizi/slug/4-sezon/8-bolum" class="ecl|mwr" aria-label="BASLIK, 4. Sezon 8. Bölüm ...">
     private fun Element.epRowKarti(): SearchResponse? {
         val href = fixUrlNull(this.attr("href")) ?: return null
         if (!href.contains("/dizi/")) return null
 
         val img = this.selectFirst("img")
-        val baslik = this.attr("title").removeSuffix(" izle").trim()
+        val aria = this.attr("aria-label").trim()
+        val baslik = aria.substringBefore(", ").trim()
+            .ifBlank { this.attr("title").removeSuffix(" izle").trim() }
             .ifBlank { img?.attr("alt")?.trim() ?: "" }
             .ifBlank { return null }
 
@@ -127,9 +131,11 @@ class DiziPalOriginal : MainAPI() {
         val seriUrl = href.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
             ?.let { "${mainUrl}/dizi/$it" } ?: href
 
-        // * Sezon/Bolum bilgisi basliktaki "3. Sezon 4. Bölüm" kismindan
-        val sezon = Regex("""(\d+)\.\s*Sezon""").find(baslik)?.groupValues?.get(1)
-        val bolum = Regex("""(\d+)\.\s*Bölüm""").find(baslik)?.groupValues?.get(1)
+        // * Sezon/Bolum bilgisi aria-label veya basliktaki "3. Sezon 4. Bölüm" kismindan
+        val kaynak = if (aria.isNotBlank()) aria else baslik
+        val sezon = Regex("""(\d+)\.\s*Sezon""").find(kaynak)?.groupValues?.get(1)
+        val bolum = Regex("""(\d+)\.\s*Bölüm""").find(kaynak)?.groupValues?.get(1)
+            ?: Regex("""(\d+)-bolum""").find(href)?.groupValues?.get(1)
         val etiket = if (sezon != null && bolum != null) " (${sezon}x${bolum})" else ""
 
         return newTvSeriesSearchResponse(baslik + etiket, seriUrl, TvType.TvSeries) {
@@ -137,15 +143,23 @@ class DiziPalOriginal : MainAPI() {
         }
     }
 
-    // * Arsiv (dizi/film/anime) poster karti
+    // * 2026-10-30 yeni tasarim arsiv karti:
+    // * <a class="tc" href="/dizi/slug" aria-label="BASLIK, 2026, Dram, IMDb 7.7">
     private fun Element.posterKarti(): SearchResponse? {
         val a = if (this.tagName() == "a") this else this.selectFirst("a") ?: this.closest("a")
         val href = fixUrlNull(a?.attr("href")) ?: return null
         if (!href.contains("/dizi/") && !href.contains("/film/")) return null
 
         val img = this.selectFirst("img") ?: a?.selectFirst("img")
-        val baslik = img?.attr("alt")?.trim()?.ifBlank { null }
+        // * Baslik: aria-label ilk virgul oncesi; yoksa img alt / title / slug
+        val aria = (a?.attr("aria-label") ?: this.attr("aria-label")).trim()
+        val baslik = aria.substringBefore(", ").trim().ifBlank { null }
+            ?: img?.attr("alt")?.trim()?.ifBlank { null }
             ?: a?.attr("title")?.removeSuffix(" izle")?.trim()?.ifBlank { null }
+            ?: href.trimEnd('/').split("/").lastOrNull()?.let {
+                it.removeSuffix("-dizi-izle").removeSuffix("-film-izle")
+                    .split("-").joinToString(" ") { w -> w.replaceFirstChar { c -> c.uppercase() } }
+            }?.ifBlank { null }
             ?: return null
 
         val poster = fixUrlNull(
@@ -162,16 +176,20 @@ class DiziPalOriginal : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // * Yeni tasarim: arama artik HTML ile -> /?s=query  (a.ep-row kartlari)
+        // * Yeni tasarim: arama artik HTML ile -> /?s=query
         val document = app.get(
             "${mainUrl}/?s=${query}",
             timeout = 15000, interceptor = interceptor, headers = getHeaders(mainUrl)
         ).document
 
         val sonuc = mutableListOf<SearchResponse>()
-        sonuc.addAll(document.select("a.ep-row").mapNotNull { it.epRowKarti() })
+        sonuc.addAll(document.select("a.tc").mapNotNull { it.posterKarti() })
         if (sonuc.isEmpty()) {
-            sonuc.addAll(document.select("[class*=poster]").mapNotNull { it.posterKarti() })
+            sonuc.addAll(document.select("a.ecl, a.mwr").mapNotNull { it.epRowKarti() })
+        }
+        if (sonuc.isEmpty()) {
+            sonuc.addAll(document.select("a[href*=/dizi/], a[href*=/film/]")
+                .mapNotNull { it.posterKarti() })
         }
         // * Ayni dizi birden fazla bolumle gelebilir -> tekille
         return sonuc.distinctBy { it.url }
@@ -207,7 +225,10 @@ class DiziPalOriginal : MainAPI() {
                 val bolum = Regex("""/(\d+)-bolum/?""").find(href)?.groupValues?.get(1)?.toIntOrNull()
                 if (sezon == null || bolum == null) return@mapNotNull null
                 newEpisode(href) {
-                    this.name    = el.attr("title").removeSuffix(" izle").trim().ifBlank { "Bölüm $bolum" }
+                    // * 2026-10-30: yeni tasarimda baslik a.attr("title") yerine aria-label'da
+                    val aria = el.attr("aria-label").trim()
+                    this.name    = aria.ifBlank { el.attr("title").removeSuffix(" izle").trim() }
+                        .ifBlank { "Bölüm $bolum" }
                     this.season  = sezon
                     this.episode = bolum
                 }
