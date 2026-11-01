@@ -3,6 +3,7 @@
 package com.keyiflerolsun
 
 import android.util.Log
+import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
@@ -24,6 +25,7 @@ import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import okhttp3.Interceptor
 import okhttp3.Response
+import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
@@ -218,23 +220,106 @@ class DiziPalOriginal : MainAPI() {
             val seriKok = url.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
                 ?.let { "${mainUrl}/dizi/$it" } ?: url
 
-            // * Tum bolumleri listeden topla (hem ep-row kartlari hem dogrudan linkler)
-            val bolumler = document.select("a[href*=/dizi/]").mapNotNull { el ->
-                val href = fixUrlNull(el.attr("href")) ?: return@mapNotNull null
-                val sezon = Regex("""/(\d+)-sezon/""").find(href)?.groupValues?.get(1)?.toIntOrNull()
-                val bolum = Regex("""/(\d+)-bolum/?""").find(href)?.groupValues?.get(1)?.toIntOrNull()
-                if (sezon == null || bolum == null) return@mapNotNull null
-                newEpisode(href) {
-                    // * 2026-10-30: yeni tasarimda baslik a.attr("title") yerine aria-label'da
-                    val aria = el.attr("aria-label").trim()
-                    this.name    = aria.ifBlank { el.attr("title").removeSuffix(" izle").trim() }
-                        .ifBlank { "Bölüm $bolum" }
-                    this.season  = sezon
-                    this.episode = bolum
-                }
-            }.distinctBy { it.data }
+            // * 2026-11-01 KRITIK: sayfada yalnizca ~5 "son bolum" linki var; TUM sezon/bolum
+            // * listesi JSON-LD (schema.org TVSeason) icinde gomulu. Ornek: The Mentalist
+            // * -> 7 sezon, her biri numberOfEpisodes + episode[].url. Bu blok olmadan
+            // * kullanici sadece ilk 5 bolumu goruyordu (liste bos geliyordu).
+            val bolumler = mutableListOf<Episode>()
 
-            return newTvSeriesLoadResponse(temiz, seriKok, TvType.TvSeries, bolumler) {
+            // 1) JSON-LD: TVSeason -> episode[]
+            // * Sayfada BIRDEN FAZLA ld+json blogu var; birlestirip parse etmek GECERSIZ JSON
+            // * olur. Her blok ayri ayri cozulur.
+            run {
+                val bloklar = document.select("script[type=application/ld+json]")
+                    .map { it.data().trim() }
+                    .filter { it.isNotBlank() }
+                var toplamSezon = 0
+                var eklenen = 0
+
+                fun sezonlariTopla(o: Any?, hedef: MutableList<JSONObject>) {
+                    when (o) {
+                        is JSONObject -> {
+                            when (o.optString("@type")) {
+                                "TVSeason" -> hedef.add(o)
+                                "TVSeries" -> {
+                                    // * 2026-11-01: containsSeason TEK nesne ya da DIZI olabilir.
+                                    // * Sadece optJSONArray kullanmak tek sezonlu dizilerde 0
+                                    // * sonuc veriyordu (nocturne, balaraw). Ikisini de destekle.
+                                    val cs = o.opt("containsSeason")
+                                    when (cs) {
+                                        is org.json.JSONArray -> for (i in 0 until cs.length()) {
+                                            cs.optJSONObject(i)?.let { hedef.add(it) }
+                                        }
+                                        is JSONObject -> hedef.add(cs)
+                                    }
+                                }
+                            }
+                            o.optJSONArray("@graph")?.let { arr ->
+                                for (i in 0 until arr.length()) sezonlariTopla(arr.opt(i), hedef)
+                            }
+                        }
+                        is org.json.JSONArray -> {
+                            for (i in 0 until o.length()) sezonlariTopla(o.opt(i), hedef)
+                        }
+                    }
+                }
+
+                for (blok in bloklar) {
+                    val sezonlar = mutableListOf<JSONObject>()
+                    try {
+                        val kok: Any = if (blok.startsWith("[")) org.json.JSONArray(blok) else JSONObject(blok)
+                        sezonlariTopla(kok, sezonlar)
+                    } catch (e: Exception) {
+                        Log.e("DiziPalOriginal", "JSON-LD blok cozulemedi: ${e.message}")
+                        continue
+                    }
+                    toplamSezon += sezonlar.size
+                    for (sz in sezonlar) {
+                        val szNo = sz.optInt("seasonNumber", 0).takeIf { it > 0 }
+                        val eps = sz.optJSONArray("episode") ?: continue
+                        for (i in 0 until eps.length()) {
+                            val ep = eps.optJSONObject(i) ?: continue
+                            val epUrl = fixUrlNull(ep.optString("url").trim()) ?: continue
+                            if (!epUrl.contains("-sezon")) continue
+                            val s = szNo
+                                ?: Regex("""/(\d+)-sezon/""").find(epUrl)?.groupValues?.get(1)?.toIntOrNull()
+                            val b = ep.optInt("episodeNumber", 0).takeIf { it > 0 }
+                                ?: Regex("""/(\d+)-bolum""").find(epUrl)?.groupValues?.get(1)?.toIntOrNull()
+                            if (s == null || b == null) continue
+                            val ad = ep.optString("name").trim().ifBlank { "$b. Bölüm" }
+                            bolumler.add(newEpisode(epUrl) {
+                                this.name    = ad
+                                this.season  = s
+                                this.episode = b
+                            })
+                            eklenen++
+                        }
+                    }
+                }
+                Log.d("DiziPalOriginal", "JSON-LD: $toplamSezon sezon, $eklenen bolum")
+            }
+
+            // 2) Yedek: sayfadaki bolum linkleri (JSON-LD yoksa)
+            if (bolumler.isEmpty()) {
+                bolumler.addAll(document.select("a[href*=/dizi/]").mapNotNull { el ->
+                    val href = fixUrlNull(el.attr("href")) ?: return@mapNotNull null
+                    val sezon = Regex("""/(\d+)-sezon/""").find(href)?.groupValues?.get(1)?.toIntOrNull()
+                    val bolum = Regex("""/(\d+)-bolum/?""").find(href)?.groupValues?.get(1)?.toIntOrNull()
+                    if (sezon == null || bolum == null) return@mapNotNull null
+                    newEpisode(href) {
+                        val aria = el.attr("aria-label").trim()
+                        this.name    = aria.ifBlank { el.attr("title").removeSuffix(" izle").trim() }
+                            .ifBlank { "Bölüm $bolum" }
+                        this.season  = sezon
+                        this.episode = bolum
+                    }
+                })
+            }
+
+            val sirali = bolumler.distinctBy { it.data }
+                .sortedWith(compareBy({ it.season ?: 0 }, { it.episode ?: 0 }))
+
+            return newTvSeriesLoadResponse(temiz, seriKok, TvType.TvSeries, sirali) {
                 this.posterUrl = poster
                 this.plot      = description
                 this.score     = score
