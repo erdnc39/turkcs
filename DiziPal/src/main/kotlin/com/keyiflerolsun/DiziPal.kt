@@ -276,12 +276,22 @@ class DiziPal : MainAPI() {
         val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
         // 1. AŞAMA: GET isteği atıp hem Token'ı hem de ÇEREZLERİ alıyoruz
+        // * 2026-11-01 KRITIK: site Bootcap bot korumasi ekledi (_bcs challenge).
+        // * Tarayici disi istekler 3 KB'lik "Dogrulama" sayfasi aliyor, videoContainer gelmiyor.
+        // * Olcum: bu 4 baslik olmadan 3078 bayt (challenge); bunlarla 61555 bayt (gercek).
+        // * Zorunlu olanlar: User-Agent + Accept + Accept-Language + Sec-Fetch-Dest + Sec-Fetch-Mode.
+        // * Ayrica ayni oturum (PHPSESSID + _ct cerezleri) korunmali -> ajax-player-config
+        // * yalnizca o oturumda success:true donuyor.
         val getResponse = app.get(
             url = data,
             headers = mapOf(
-                "User-Agent"    to userAgent,
-                "Cache-Control" to "no-cache",
-                "Pragma"        to "no-cache"
+                "User-Agent"      to userAgent,
+                "Accept"          to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "tr-TR,tr;q=0.9,en;q=0.8",
+                "Sec-Fetch-Dest"  to "document",
+                "Sec-Fetch-Mode"  to "navigate",
+                "Cache-Control"   to "no-cache",
+                "Pragma"          to "no-cache"
             )
         )
 
