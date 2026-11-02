@@ -43,7 +43,12 @@ class DiziPalOriginal : MainAPI() {
     // *             arsiv kartlari a.tc (aria-label "Baslik, 2026, Tur, IMDb 7.7"),
     // *             bolum kartlari a.ecl / a.mwr (aria-label "Baslik, 4. Sezon 1. Bolum").
     // *             Olculen: /diziler a.tc 54, /filmler 16, /anime 60, /yeni-eklenen-bolumler a.ecl+mwr.
-    override var mainUrl              = "https://dizipal1823.com"
+    // * 2026-11-03: 1823 -> 1824 (SAGLIK.py 302 yakaladi). 1824: 4 yol HTTP 200, baslik Turkce,
+    // *             /diziler a.tc 54, /filmler 16, /anime 30, /yeni-eklenen-bolumler a.ecl 27 + a.mwr 5,
+    // *             detay 118 KB + 4 JSON-LD TVSeason blogu (yapi AYNI).
+    // *             ARAMA BULUNDU: /?s= arama yapmiyor (404 + popular listesi). Dogru uc:
+    // *             /arama-yap?s=<kelime> -> "ceki" 2, "over" 4, "iron" 9 dogru a.tc karti.
+    override var mainUrl              = "https://dizipal1824.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -178,9 +183,10 @@ class DiziPalOriginal : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // * Yeni tasarim: arama artik HTML ile -> /?s=query
+        // * 2026-11-03: /?s= ARAMA YAPMIYOR (Next.js 404 + "popular" listesi donuyor).
+        // * Dogru uc: /arama-yap?s=<kelime>
         val document = app.get(
-            "${mainUrl}/?s=${query}",
+            "${mainUrl}/arama-yap?s=${query}",
             timeout = 15000, interceptor = interceptor, headers = getHeaders(mainUrl)
         ).document
 

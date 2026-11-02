@@ -24,7 +24,11 @@ class DiziPal : MainAPI() {
     // *             + detail-episode-item-wrap 6 + info-row 4, ajax-search {"success":true}.
     // * 2026-10-30: 2143 -> 2145 (SAGLIK.py 302 yakaladi). 2145: 4 yol HTTP 200, /bolumler
     // *             episode-list-item 24, /diziler + /filmler content-grid 24, /platform/netflix 20.
-    override var mainUrl              = "https://dizipal2145.com"
+    // * 2026-11-03: 2145 -> 2146 (SAGLIK.py 302 yakaladi). 2146: 5 yol HTTP 200 (bolumler/diziler/
+    // *             filmler/platform/netflix/kategori), /bolumler episode-list-item 24,
+    // *             /diziler content-card 24, detay h1.series-title + detail-episode-item-wrap 4,
+    // *             videoContainer data-cfg + ajax-player-config {"success":true} dogrulandi.
+    override var mainUrl              = "https://dizipal2146.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"
