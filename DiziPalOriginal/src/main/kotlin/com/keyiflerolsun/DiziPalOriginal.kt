@@ -23,6 +23,8 @@ import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.newExtractorLink
 import okhttp3.Interceptor
 import okhttp3.Response
 import org.json.JSONObject
@@ -341,69 +343,175 @@ class DiziPalOriginal : MainAPI() {
         }
     }
 
-    // 2. LOAD LINKS: Asıl şifre çözme ve Iframe yakalama işleminin yapıldığı yer
+    // 2. LOAD LINKS: 2026-11-03 TAMAMEN YENI AKIS (olculdu, tarayici + urllib dogrulandi)
+    //
+    //  ESKI (artik YOK): div[data-rm-k=true] -> AES/PBKDF2 -> iframe
+    //  YENI (Next.js RSC):
+    //    1) Bolum sayfasinda "enc":{ciphertext,iv,salt} + "k":"<passphrase>" alanlari var
+    //       (JSON icinde tek seviye kacisli: \"ciphertext\" -> once \\" -> " normalizasyonu)
+    //    2) PBKDF2WithHmacSHA512(passphrase, salt, 999 iter, 256 bit) -> AES-256-CBC(iv)
+    //       sifreli metin Base64. Sonuc iframe URL'i (//four.dplayer82.site/iframe.php?v=...)
+    //    3) o iframe -> window.NP_CONFIG.sources[0].master (nm.php?v=...)
+    //    4) master -> #EXT-X-STREAM-INF varyantlari (720p / 1080p) nl.php?v=...
+    //  olculen: master 2197 B, varyant manifest 33824 B, segmentler lkm-*.com/f/...
+    //
+    //  NOT: Playwright GEREKMEZ; saf HTTP ile calisir (Android CloudStream icinde de).
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        Log.d("DiziPalOriginal", "--> loadLinks ÇAĞRILDI. Gelen URL: $data")
-        val doc = app.get(data).document
-        
-        // Şifreli div'i bul
-        val encryptedText = doc.selectFirst("div[data-rm-k=true]")?.text() ?: ""
-        Log.d("DiziPalOriginal", "--> Şifreli metin uzunluğu: ${encryptedText.length}")
-        
-        var iframeUrl = if (encryptedText.isNotEmpty()) {
-            Log.d("DiziPalOriginal", "--> Şifreli veri bulundu, decrypt işlemine geçiliyor...")
-            decryptDizipalData(encryptedText)
-        } else {
-            Log.w("DiziPalOriginal", "--> DİKKAT: Şifreli veri DOM'da YOK! Fallback iframe aranıyor...")
-            doc.selectFirst("iframe")?.attr("src") ?: ""
+        Log.d("DiziPalOriginal", "--> loadLinks: $data")
+
+        val sayfa = app.get(data, interceptor = interceptor, headers = getHeaders(mainUrl), timeout = 20000L).text
+        // * RSC payload'i JSON icinde kacisli; tek seviye normalizasyon yeterli
+        val norm = sayfa.replace("\\\"", "\"")
+
+        val ciphertext = Regex(""""ciphertext"\s*:\s*"([^"]+)"""").find(norm)?.groupValues?.get(1)
+        val ivHex      = Regex(""""iv"\s*:\s*"([0-9a-fA-F]{32})"""").find(norm)?.groupValues?.get(1)
+        val saltHex    = Regex(""""salt"\s*:\s*"([0-9a-fA-F]{64,})"""").find(norm)?.groupValues?.get(1)
+        val passphrase = Regex(""""k"\s*:\s*"([A-Za-z0-9+/=]{40,})"""").find(norm)?.groupValues?.get(1)
+
+        if (ciphertext == null || ivHex == null || saltHex == null || passphrase == null) {
+            Log.e("DiziPalOriginal", "--> enc/k alanlari bulunamadi (tasarim degismis olabilir)")
+
+            // * Yedek: eski sifreli div hala varsa onu dene
+            val eskiMetin = Jsoup.parse(sayfa).selectFirst("div[data-rm-k=true]")?.text() ?: ""
+            if (eskiMetin.isNotEmpty()) {
+                val eskiUrl = decryptEski(eskiMetin)
+                if (eskiUrl.isNotEmpty()) return oynat(eskiUrl, data, subtitleCallback, callback)
+            }
+            return false
         }
 
-        Log.d("DiziPalOriginal", "--> Elde edilen Ham Iframe URL: $iframeUrl")
+        val iframeUrl = try {
+            val salt = saltHex.decodeHex()
+            val iv = ivHex.decodeHex()
+            val sifre = android.util.Base64.decode(ciphertext, android.util.Base64.DEFAULT)
 
-        if (iframeUrl.isNotEmpty()) {
-            if (iframeUrl.startsWith("//")) {
-                iframeUrl = "https:$iframeUrl"
+            val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
+            val spec = javax.crypto.spec.PBEKeySpec(passphrase.toCharArray(), salt, 999, 256)
+            val secret = javax.crypto.spec.SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
+
+            val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secret, javax.crypto.spec.IvParameterSpec(iv))
+
+            var url = String(cipher.doFinal(sifre), Charsets.UTF_8).replace("\\/", "/").trim()
+            url = when {
+                url.startsWith("//") -> "https:$url"
+                url.startsWith("://") -> "https$url"
+                !url.startsWith("http") -> "https://$url"
+                else -> url
             }
-            Log.d("DiziPalOriginal", "--> Extractor'a gönderilen Final URL: $iframeUrl")
-            
-            // Extractor'ı tetikle
-            DizipalPlayer().getUrl(
-                url = iframeUrl,
-                referer = data, // Videonun bulunduğu sayfa
-                subtitleCallback = subtitleCallback,
-                callback = callback
-            )
-        } else {
-            Log.e("DiziPalOriginal", "--> HATA: iframeUrl tamamen BOŞ. Video linki bulunamadı!")
+            Log.d("DiziPalOriginal", "--> sifre cozuldu: $url")
+            url
+        } catch (e: Exception) {
+            Log.e("DiziPalOriginal", "--> sifre cozme hatasi: ${e.message}")
+            ""
+        }
+
+        if (iframeUrl.isEmpty()) return false
+        return oynat(iframeUrl, data, subtitleCallback, callback)
+    }
+
+    // * dplayer iframe -> NP_CONFIG.sources[].master -> master m3u8 varyantlari
+    private suspend fun oynat(
+        iframeUrl: String,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val iframeHtml = try {
+            app.get(iframeUrl, headers = getHeaders(referer), timeout = 20000L).text
+        } catch (e: Exception) {
+            Log.e("DiziPalOriginal", "--> iframe alinamadi: ${e.message}")
+            return false
+        }
+
+        val cfgMetni = Regex("""window\.NP_CONFIG\s*=\s*(\{.*?\})\s*;?\s*\n""", RegexOption.DOT_MATCHES_ALL)
+            .find(iframeHtml)?.groupValues?.get(1)
+            ?: Regex("""window\.NP_CONFIG\s*=\s*(\{.*?\})\s*</script>""", RegexOption.DOT_MATCHES_ALL)
+                .find(iframeHtml)?.groupValues?.get(1)
+
+        if (cfgMetni == null) {
+            Log.e("DiziPalOriginal", "--> NP_CONFIG bulunamadi (iframe ${iframeHtml.length} bayt)")
+            // * Son sans: iframe'i extractora ver
+            DizipalPlayer().getUrl(iframeUrl, referer, subtitleCallback, callback)
+            return true
+        }
+
+        var bulundu = false
+        try {
+            val cfg = JSONObject(cfgMetni)
+            val kaynaklar = cfg.optJSONArray("sources") ?: return false
+            for (i in 0 until kaynaklar.length()) {
+                val kaynak = kaynaklar.optJSONObject(i) ?: continue
+                val master = kaynak.optString("master").trim()
+                if (master.isEmpty()) continue
+
+                // * master manifest -> varyantlar
+                val varyantlar = mutableListOf<String>()
+                try {
+                    val man = app.get(master, headers = getHeaders(iframeUrl), timeout = 20000L).text
+                    if (man.contains("#EXT-X-STREAM-INF")) {
+                        val satirlar = man.lines()
+                        for (j in satirlar.indices) {
+                            if (satirlar[j].startsWith("#EXT-X-STREAM-INF")) {
+                                val sonraki = satirlar.getOrNull(j + 1)?.trim().orEmpty()
+                                if (sonraki.isNotEmpty() && !sonraki.startsWith("#")) varyantlar.add(sonraki)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("DiziPalOriginal", "--> master alinamadi: ${e.message}")
+                }
+
+                if (varyantlar.isEmpty()) varyantlar.add(master)
+
+                val kalite = kaynak.optString("quality").ifBlank { "Orijinal" }
+                for ((sira, v) in varyantlar.withIndex()) {
+                    callback(
+                        newExtractorLink(
+                            source = this.name,
+                            name = if (varyantlar.size > 1) "${this.name} · $kalite #$sira" else "${this.name} · $kalite",
+                            url = v,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = iframeUrl
+                            this.quality = if (v.contains("1080")) 1080 else if (v.contains("720")) 720 else 0
+                        }
+                    )
+                }
+                bulundu = true
+            }
+        } catch (e: Exception) {
+            Log.e("DiziPalOriginal", "--> NP_CONFIG parse hatasi: ${e.message}")
+        }
+
+        if (!bulundu) {
+            Log.w("DiziPalOriginal", "--> master yok, extractora devrediliyor")
+            DizipalPlayer().getUrl(iframeUrl, referer, subtitleCallback, callback)
         }
         return true
     }
 
-    // 3. DECRYPT VE YARDIMCI FONKSİYON: Şifreyi çözen business logic
+    // 3. ESKI SIFRE COZME (geriye donuk yedek): div[data-rm-k=true]
     private fun String.decodeHex(): ByteArray {
         check(length % 2 == 0) { "Hex string çift uzunlukta olmalıdır" }
         return chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     }
 
-    private fun decryptDizipalData(rawJsonText: String): String {
+    private fun decryptEski(rawJsonText: String): String {
         return try {
             val passphrase = "3hPn4uCjTVtfYWcjIcoJQ4cL1WWk1qxXI39egLYOmNv6IblA7eKJz68uU3eLzux1biZLCms0quEjTYniGv5z1JcKbNIsDQFSeIZOBZJz4is6pD7UyWDggWWzTLBQbHcQFpBQdClnuQaMNUHtLHTpzCvZy33p6I7wFBvL4fnXBYH84aUIyWGTRvM2G5cfoNf4705tO2kv"
 
-            val ctMatch = """"ciphertext"\s*:\s*"([^"]+)"""".toRegex().find(rawJsonText)?.groupValues?.get(1) 
-                ?: return "".also { Log.e("DiziPalOriginal", "--> HATA: Regex 'ciphertext' değerini bulamadı!") }
-                
-            val ivMatch = """"iv"\s*:\s*"([^"]+)"""".toRegex().find(rawJsonText)?.groupValues?.get(1) 
-                ?: return "".also { Log.e("DiziPalOriginal", "--> HATA: Regex 'iv' değerini bulamadı!") }
-                
-            val saltMatch = """"salt"\s*:\s*"([^"]+)"""".toRegex().find(rawJsonText)?.groupValues?.get(1) 
-                ?: return "".also { Log.e("DiziPalOriginal", "--> HATA: Regex 'salt' değerini bulamadı!") }
-
-            Log.d("DiziPalOriginal", "--> Regex başarılı. Key türetiliyor...")
+            val ctMatch = """"ciphertext"\s*:\s*"([^"]+)"""".toRegex().find(rawJsonText)?.groupValues?.get(1)
+                ?: return ""
+            val ivMatch = """"iv"\s*:\s*"([^"]+)"""".toRegex().find(rawJsonText)?.groupValues?.get(1)
+                ?: return ""
+            val saltMatch = """"salt"\s*:\s*"([^"]+)"""".toRegex().find(rawJsonText)?.groupValues?.get(1)
+                ?: return ""
 
             val salt = saltMatch.decodeHex()
             val iv = ivMatch.decodeHex()
@@ -411,29 +519,21 @@ class DiziPalOriginal : MainAPI() {
 
             val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
             val spec = javax.crypto.spec.PBEKeySpec(passphrase.toCharArray(), salt, 999, 256)
-            val secretKey = factory.generateSecret(spec)
-            val secret = javax.crypto.spec.SecretKeySpec(secretKey.encoded, "AES")
+            val secret = javax.crypto.spec.SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
 
             val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
             cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secret, javax.crypto.spec.IvParameterSpec(iv))
 
-            val decryptedBytes = cipher.doFinal(ciphertext)
-            var finalUrl = String(decryptedBytes, Charsets.UTF_8).replace("\\/", "/")
-
-            Log.d("DiziPalOriginal", "--> AES Çözümleme Başarılı. İlk Çıktı: $finalUrl")
-
-            if (finalUrl.startsWith("://")) {
-                finalUrl = "https$finalUrl"
-            } else if (finalUrl.startsWith("//")) {
-                finalUrl = "https:$finalUrl"
-            } else if (!finalUrl.startsWith("http")) {
-                finalUrl = "https://$finalUrl"
+            var finalUrl = String(cipher.doFinal(ciphertext), Charsets.UTF_8).replace("\\/", "/")
+            finalUrl = when {
+                finalUrl.startsWith("://") -> "https$finalUrl"
+                finalUrl.startsWith("//") -> "https:$finalUrl"
+                !finalUrl.startsWith("http") -> "https://$finalUrl"
+                else -> finalUrl
             }
-
             finalUrl
         } catch (e: Exception) {
-            Log.e("DiziPalOriginal", "--> HATA: Decryption sırasında Exception fırlatıldı! Mesaj: ${e.message}")
-            e.printStackTrace()
+            Log.e("DiziPalOriginal", "--> eski decrypt hatasi: ${e.message}")
             ""
         }
     }

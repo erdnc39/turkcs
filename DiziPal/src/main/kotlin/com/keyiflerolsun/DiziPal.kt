@@ -364,6 +364,15 @@ class DiziPal : MainAPI() {
         val embedUrl = fixUrl(embedUrlRaw)
         Log.d("DZP", "Çözülen Embed URL » $embedUrl")
 
+        // * 2026-11-03: Bazi bolumlerde sunucu config.v = "" ve t = "none" donuyor
+        // * (o bolumde kaynak yok / kaldirilmis). Bu durumda cokmek yerine
+        // * temiz bir "kaynak yok" donusu yap; aksi halde Request.Builder("")
+        // * IllegalArgumentException firlatip TUM eklentiyi hatali gosteriyor.
+        if (embedUrl.isBlank() || embedUrl == "https://" || embedUrl == "http://") {
+            Log.w("DZP", "Bu bölüm için kaynak yok (config.v boş, t=none)")
+            return false
+        }
+
 
         if (embedUrl.contains("imagestoo")) {
             
@@ -460,7 +469,21 @@ class DiziPal : MainAPI() {
         }
 
 
-        val finalM3u8Url = if (extractedUrl.contains(".html")) {
+        // * 2026-11-03 OLCUM: embed'in verdigi "master.m3u8" adresi CDN'de HTTP 403
+        // * donuyor (v parametresi master'da kabul edilmiyor). AYNI dizindeki varyant
+        // * manifest oynatilabilir:
+        // *   embed : .../ujgwfx4lhhpt_,n,h,.urlset/master.m3u8?v=...
+        // *   calisan: .../ujgwfx4lhhpt_n/index-v1-a1.m3u8      -> HTTP 200, 32 KB
+        // *   calisan: .../ujgwfx4lhhpt_n/index-a1.m3u8         -> ses grubu
+        // * Bu yuzden master yerine varyant manifesti turetiyoruz.
+        val finalM3u8Url = if (extractedUrl.contains("master.m3u8")) {
+            val kok = extractedUrl.substringBefore("/master.m3u8")
+            // * "...ujgwfx4lhhpt_,n,h,.urlset" -> "...ujgwfx4lhhpt_n"
+            val yol = kok.substringBefore("/")
+            val dosya = kok.substringAfterLast("/")          // ujgwfx4lhhpt_,n,h,.urlset
+            val anahtar = dosya.substringBefore("_,")        // ujgwfx4lhhpt
+            "$yol/${anahtar}_n/index-v1-a1.m3u8"
+        } else if (extractedUrl.contains(".html")) {
             // URL'den sadece ID'yi (x6sctfgmyfws) güvenli bir şekilde ayıklıyoruz
             // Örn: .../embed-x6sctfgmyfws.html -> x6sctfgmyfws
             val idRegex = Regex("""embed-([^.]+)\.html""")
@@ -497,7 +520,10 @@ class DiziPal : MainAPI() {
                 url = finalM3u8Url,
                 type = ExtractorLinkType.M3U8
             ) {
-                referer = embedUrl
+                // * 2026-11-03 OLCUM: CDN yalnizca formationfeed.net referer'ini kabul
+                // * ediyor. dizipal2146.com referer'i ve referersiz istekler HTTP 403.
+                // * (olculen: referer=formationfeed.net/ -> 200, 32430 B)
+                referer = "https://formationfeed.net/"
                 quality = Qualities.Unknown.value
             }
         )
