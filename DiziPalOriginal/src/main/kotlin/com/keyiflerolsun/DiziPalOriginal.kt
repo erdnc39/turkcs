@@ -120,6 +120,17 @@ class DiziPalOriginal : MainAPI() {
         return newHomePageResponse(request.name, home, hasNext = home.isNotEmpty())
     }
 
+    // * 2026-11-04: /dizi/<slug> -> 404. Seri sayfasi /dizi/<slug>-dizi-izle.
+    // * Slug'lar 2026-10-30'dan beri zaten "-dizi-izle" ile bitiyor (orn. visionquest-dizi-izle).
+    // * Eski bolum linklerinden turetilen ciplak slug'lari da bu fonksiyon tamamlar.
+    private fun seriIzi(slug: String): String {
+        val s = slug.trim().trim('/')
+        return when {
+            s.endsWith("-dizi-izle") || s.endsWith("-film-izle") -> s
+            else -> "$s-dizi-izle"
+        }
+    }
+
     // * 2026-10-30 yeni tasarim bolum karti:
     // * <a href="/dizi/slug/4-sezon/8-bolum" class="ecl|mwr" aria-label="BASLIK, 4. Sezon 8. Bölüm ...">
     private fun Element.epRowKarti(): SearchResponse? {
@@ -139,8 +150,12 @@ class DiziPalOriginal : MainAPI() {
         )
 
         // * Bolum linkinden seri kok adresi: /dizi/slug/sezon/bolum -> /dizi/slug
+        // * 2026-11-04 KRITIK: /dizi/<slug> 404 VERIYOR (Next.js). Gecerli seri sayfasi
+        // * /dizi/<slug>-dizi-izle; JSON-LD (TVSeries + containsSeason[].episode[]) SADECE
+        // * orada var. Bolum sayfasinda yalnizca TVEpisode blogu + 6 link bulunuyor, bu
+        // * yuzden "JSON-LD: 0 sezon, 0 bolum" -> "Konu Bulunamadı / Çok yakında".
         val seriUrl = href.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
-            ?.let { "${mainUrl}/dizi/$it" } ?: href
+            ?.let { "${mainUrl}/dizi/${seriIzi(it)}" } ?: href
 
         // * Sezon/Bolum bilgisi aria-label veya basliktaki "3. Sezon 4. Bölüm" kismindan
         val kaynak = if (aria.isNotBlank()) aria else baslik
@@ -210,7 +225,23 @@ class DiziPalOriginal : MainAPI() {
     override suspend fun quickSearch(query: String): List<SearchResponse> = search(query)
 
     override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url, interceptor = interceptor, headers = getHeaders(mainUrl)).document
+        // * 2026-11-04 KRITIK TASARIM DEGISIKLIGI (olculdu, t107 "Konu Bulunamadı"):
+        // *   /dizi/<slug>                  -> 404
+        // *   /dizi/<slug>/1-sezon/1-bolum -> 200 ama ICINDE YALNIZCA TVEpisode JSON-LD var
+        // *        (+ "Son Bolumler" listesinde 6 link). TVSeason/TVSeries YOK.
+        // *        -> "JSON-LD: 0 sezon, 0 bolum" -> RVM episodes bos -> "Çok yakında".
+        // *   /dizi/<slug>-dizi-izle        -> 200, TVSeries + containsSeason[].episode[] TAM liste.
+        // * Bolum URL'si geldiyse seri sayfasina gecip bolum listesini oradan aliyoruz; bolum
+        // * listesindeki data alanlari gercek /dizi/<slug>/<s>-sezon/<b>-bolum URL'leri kalir,
+        // * yani loadLinks tarafi degismiyor.
+        val bolumSayfasi = url.contains("/dizi/") && Regex("""/\d+-sezon/\d+-bolum""").containsMatchIn(url)
+        val seriSlug = url.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
+        val seriUrl = seriSlug?.let { "${mainUrl}/dizi/${seriIzi(it)}" } ?: url
+
+        val document = app.get(
+            if (bolumSayfasi) seriUrl else url,
+            interceptor = interceptor, headers = getHeaders(mainUrl), timeout = 20000L
+        ).document
 
         // * Yeni tasarimda baslik: <h1>4. Bölüm — 10 Bin Adım (10 Bin Adim) 3. Sezon 4. Bölüm İzle</h1>
         val h1 = document.selectFirst("h1")?.text()?.trim() ?: ""
@@ -227,8 +258,7 @@ class DiziPalOriginal : MainAPI() {
                 .ifBlank { h1.substringBefore(" izle") }
                 .ifBlank { "Bölüm" }
                 .trim()
-            val seriKok = url.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
-                ?.let { "${mainUrl}/dizi/$it" } ?: url
+            val seriKok = seriUrl
 
             // * 2026-11-01 KRITIK: sayfada yalnizca ~5 "son bolum" linki var; TUM sezon/bolum
             // * listesi JSON-LD (schema.org TVSeason) icinde gomulu. Ornek: The Mentalist
