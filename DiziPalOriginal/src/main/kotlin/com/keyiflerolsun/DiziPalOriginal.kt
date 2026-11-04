@@ -13,6 +13,7 @@ import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.fixUrl
 import com.lagradost.cloudstream3.fixUrlNull
 import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.network.CloudflareKiller
@@ -24,6 +25,7 @@ import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.ExtractorLinkType
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -429,18 +431,41 @@ class DiziPalOriginal : MainAPI() {
             return false
         }
 
+        // * 2026-11-03 OLCUM: dplayer82.site/multiplayer.php artik NP_CONFIG uretmiyor.
+        // * Yeni yuk (361 KB) dogrudan player scripti + "apiUrl" / "sources:[{file:...}]":
+        // *   apiUrl: https://dplayer82.site/source2.php?v=UzFsMDZ...
+        // *   sources:[{file:"https://dplayer82.site/master.m3u8?v=cHVQSnhE..."}]
+        // * Eski NP_CONFIG hala cikarsa onu kullaniyoruz (geriye donuk uyum).
+
         val cfgMetni = Regex("""window\.NP_CONFIG\s*=\s*(\{.*?\})\s*;?\s*\n""", RegexOption.DOT_MATCHES_ALL)
             .find(iframeHtml)?.groupValues?.get(1)
             ?: Regex("""window\.NP_CONFIG\s*=\s*(\{.*?\})\s*</script>""", RegexOption.DOT_MATCHES_ALL)
                 .find(iframeHtml)?.groupValues?.get(1)
 
-        if (cfgMetni == null) {
-            Log.e("DiziPalOriginal", "--> NP_CONFIG bulunamadi (iframe ${iframeHtml.length} bayt)")
-            // * Son sans: iframe'i extractora ver
-            DizipalPlayer().getUrl(iframeUrl, referer, subtitleCallback, callback)
-            return true
+        if (cfgMetni != null) {
+            val npSonuc = npConfigCoz(cfgMetni, iframeUrl, subtitleCallback, callback)
+            if (npSonuc) return true
+            Log.w("DiziPalOriginal", "--> NP_CONFIG ise yaramadi, yeni akis denenecek")
+        } else {
+            Log.d("DiziPalOriginal", "--> NP_CONFIG yok (yeni player yuku, ${iframeHtml.length} bayt)")
         }
 
+        // * YENI AKIS: player yukunden dogrudan kaynak adresi cikar
+        if (yeniAkisCoz(iframeHtml, iframeUrl, subtitleCallback, callback)) return true
+
+        // * Son sans: iframe'i extractora ver
+        Log.w("DiziPalOriginal", "--> kaynak cikarilamadi, extractora devrediliyor")
+        DizipalPlayer().getUrl(iframeUrl, referer, subtitleCallback, callback)
+        return true
+    }
+
+    // * ESKI akis: window.NP_CONFIG = {"sources":[{"master":"...","quality":"..."}]}
+    private suspend fun npConfigCoz(
+        cfgMetni: String,
+        iframeUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
         var bulundu = false
         try {
             val cfg = JSONObject(cfgMetni)
@@ -450,24 +475,8 @@ class DiziPalOriginal : MainAPI() {
                 val master = kaynak.optString("master").trim()
                 if (master.isEmpty()) continue
 
-                // * master manifest -> varyantlar
-                val varyantlar = mutableListOf<String>()
-                try {
-                    val man = app.get(master, headers = getHeaders(iframeUrl), timeout = 20000L).text
-                    if (man.contains("#EXT-X-STREAM-INF")) {
-                        val satirlar = man.lines()
-                        for (j in satirlar.indices) {
-                            if (satirlar[j].startsWith("#EXT-X-STREAM-INF")) {
-                                val sonraki = satirlar.getOrNull(j + 1)?.trim().orEmpty()
-                                if (sonraki.isNotEmpty() && !sonraki.startsWith("#")) varyantlar.add(sonraki)
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("DiziPalOriginal", "--> master alinamadi: ${e.message}")
-                }
-
-                if (varyantlar.isEmpty()) varyantlar.add(master)
+                val varyantlar = masterVaryantlari(master, iframeUrl)
+                if (varyantlar.isEmpty()) continue
 
                 val kalite = kaynak.optString("quality").ifBlank { "Orijinal" }
                 for ((sira, v) in varyantlar.withIndex()) {
@@ -488,12 +497,172 @@ class DiziPalOriginal : MainAPI() {
         } catch (e: Exception) {
             Log.e("DiziPalOriginal", "--> NP_CONFIG parse hatasi: ${e.message}")
         }
+        return bulundu
+    }
 
-        if (!bulundu) {
-            Log.w("DiziPalOriginal", "--> master yok, extractora devrediliyor")
-            DizipalPlayer().getUrl(iframeUrl, referer, subtitleCallback, callback)
+    // * YENI akis: player yukunden "sources:[{file:..}]" / "apiUrl" / "master.m3u8" cikar
+    private suspend fun yeniAkisCoz(
+        iframeHtml: String,
+        iframeUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        // * 2026-11-04: CloudStream'in KENDI calisan extractoru "DPlayer (Auto)" = ContentX.
+        // * ContentXExtractor.kt'yi baksmali ile soktum; gercek zinciri su:
+        // *   1) iframe HTML icinde  window.openPlayer('<VID>')  -> VID
+        // *   2) GET  https://dplayer82.site/source2.php?v=<VID>   (mainUrl + "/source2.php?v=" + VID)
+        // *   3) cevap KACISLI JSON:  \"file\":\"<m3u8>\",\"label\":\"<etiket>\"
+        // *   4) her eslesme icin ExtractorLink(referer = iframeUrl, quality = Unknown)
+        // *   5) ek olarak  ,\"<vtt>\",\"Türkçe...\"  -> altyazi
+        // * Onceki halimiz normallesmis metinde "sources:[{file:..}]" ariyordu; yeni yukte
+        // * boyle bir sey YOK, o yuzden hep "kaynak bulunamadi" diyordu.
+        val norm = iframeHtml.replace("\\/", "/")
+
+        val kaynaklar = mutableListOf<String>()
+        val gorulen = mutableSetOf<String>()
+
+        /** source2.php cevabini (veya herhangi bir player yukunu) ayristirir. */
+        fun ayristir(metin: String, etiketOnek: String) {
+            // * 2026-11-04 GERCEK GOVDE (source2.php, 2769 B):
+            // *   {"state":true,"expired":false,"playlist":[{"sources":[
+            // *     {"default":false,"type":"hls","title":"Türkçe Altyazı",
+            // *      "mimeType":"application/vnd.apple.mpegurl",
+            // *      "file":"https:\/\/dplayer82.site\/m.php?v=cHVQ..."}]}]}
+            // * Yani: normal JSON, sadece "\\/" kacisli. Dosya adi m.php / master.m3u8
+            // * olabiliyor -> ".m3u8" sartı KOYMAYACAGIZ.
+            val desen = Regex(""""file"\s*:\s*"([^"]+)"""")
+            desen.findAll(metin).forEach { eslesme ->
+                var adres = eslesme.groupValues[1]
+                    .replace("\\/", "/")
+                    .replace("\\u0026", "&")
+                    .replace("\\", "")
+                    .trim()
+                if (adres.isBlank()) return@forEach
+                adres = when {
+                    adres.startsWith("//") -> "https:$adres"
+                    !adres.startsWith("http") -> "https://$adres"
+                    else -> adres
+                }
+                if (gorulen.add(adres)) {
+                    Log.d("DiziPalOriginal", "--> kaynak bulundu ($etiketOnek): $adres")
+                    kaynaklar.add(adres)
+                }
+            }
         }
+
+        // * ADIM 1: window.openPlayer('<VID>')
+        val videoId = Regex("""window\.openPlayer\(\s*['"]([^'"]+)['"]""")
+            .find(norm)?.groupValues?.get(1)
+        Log.d("DiziPalOriginal", "--> openPlayer id: $videoId")
+
+        // * ADIM 2: <mainUrl>/source2.php?v=<VID>
+        if (!videoId.isNullOrBlank()) {
+            // * dikkat: substringBefore("/") "https:" birakir -> sema + host'u elle ayir
+            val taban = run {
+                val semaSon = iframeUrl.indexOf("://")
+                if (semaSon <= 0) return@run mainUrl
+                val kalan = iframeUrl.substring(semaSon + 3)
+                val host = kalan.substringBefore("/")
+                if (host.isBlank()) mainUrl else "${iframeUrl.substring(0, semaSon)}://$host"
+            }
+            val tunel = "$taban/source2.php?v=$videoId"
+            Log.d("DiziPalOriginal", "--> source2: $tunel")
+            try {
+                val cevap = app.get(tunel, headers = getHeaders(iframeUrl), timeout = 20000L).text
+                Log.d("DiziPalOriginal", "--> source2 cevabi ${cevap.length} bayt")
+                ayristir(cevap, "source2")
+            } catch (e: Exception) {
+                Log.e("DiziPalOriginal", "--> source2 alinamadi: ${e.message}")
+            }
+        }
+
+        // * ADIM 3: yukun kendisinde zaten m3u8 varsa onlari da al
+        ayristir(norm, "")
+        ayristir(norm, "gömülü")
+
+        if (kaynaklar.isEmpty()) {
+            Log.e("DiziPalOriginal", "--> yeni akista kaynak bulunamadi")
+            return false
+        }
+
+        // * m.php?v=... bir MASTER manifest. Iceriginden varyantlari cikar.
+        val nihaiListe = mutableListOf<Pair<String, ExtractorLinkType>>()
+        for (aday in kaynaklar) {
+            val tur = if (aday.contains(".m3u8")) ExtractorLinkType.M3U8
+            else if (aday.contains(".mp4")) ExtractorLinkType.VIDEO
+            else ExtractorLinkType.M3U8
+
+            if (aday.contains("master.m3u8") || Regex("""/m\.php\?""").containsMatchIn(aday)) {
+                val varyantlar = masterVaryantlari(aday, iframeUrl)
+                Log.d("DiziPalOriginal", "--> master varyant sayisi: ${varyantlar.size}")
+                for (v in varyantlar) nihaiListe.add(v to tur)
+            } else {
+                nihaiListe.add(aday to tur)
+            }
+        }
+
+        for ((sira, cift) in nihaiListe.withIndex()) {
+            val (url, tur) = cift
+            callback(
+                newExtractorLink(
+                    source = this.name,
+                    name = if (nihaiListe.size > 1) "${this.name} · Sunucu #${sira + 1}" else "${this.name} · Ana Sunucu",
+                    url = url,
+                    type = tur
+                ) {
+                    this.referer = iframeUrl
+                    this.quality = Qualities.Unknown.value
+                }
+            )
+        }
+
+        // * Altyazilar:  ,\"<adres>\"  ,\"Türkçe...\"  (ContentX ile ayni desen)
+        Regex(""",\\"([^\']+)\\",\\"Türkçe""").findAll(norm).forEach { eslesme ->
+            val adres = fixUrl(eslesme.groupValues[1].replace("\\", ""))
+            subtitleCallback(SubtitleFile(lang = "Türkçe", url = adres))
+        }
+
         return true
+    }
+
+    // * ".../ujgwfx4lhhpt_,n,h,.urlset/master.m3u8?v=..." -> ".../ujgwfx4lhhpt_n/index-v1-a1.m3u8"
+    private fun masterVaryantTuret(master: String): String? {
+        return try {
+            val kok = master.substringBefore("/master.m3u8")
+            if (!kok.contains("/")) return null
+            val yol = kok.substringBeforeLast("/")
+            val dosya = kok.substringAfterLast("/")
+            val anahtar = dosya.substringBefore("_,")
+            if (anahtar.isEmpty() || anahtar == dosya) return null
+            "$yol/${anahtar}_n/index-v1-a1.m3u8"
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // * master manifest -> #EXT-X-STREAM-INF varyantlari (yoksa master'in kendisi)
+    private suspend fun masterVaryantlari(master: String, iframeUrl: String): List<String> {
+        val varyantlar = mutableListOf<String>()
+        try {
+            val man = app.get(master, headers = getHeaders(iframeUrl), timeout = 20000L).text
+            if (man.contains("#EXT-X-STREAM-INF")) {
+                val satirlar = man.lines()
+                for (j in satirlar.indices) {
+                    if (satirlar[j].startsWith("#EXT-X-STREAM-INF")) {
+                        val sonraki = satirlar.getOrNull(j + 1)?.trim().orEmpty()
+                        if (sonraki.isNotEmpty() && !sonraki.startsWith("#")) {
+                            varyantlar.add(if (sonraki.startsWith("http")) sonraki else fixUrl(sonraki))
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DiziPalOriginal", "--> master alinamadi: ${e.message}")
+        }
+        if (varyantlar.isEmpty()) {
+            masterVaryantTuret(master)?.let { varyantlar.add(it) } ?: varyantlar.add(master)
+        }
+        return varyantlar
     }
 
     // 3. ESKI SIFRE COZME (geriye donuk yedek): div[data-rm-k=true]
