@@ -52,7 +52,10 @@ class DiziPalOriginal : MainAPI() {
     // *             detay 118 KB + 4 JSON-LD TVSeason blogu (yapi AYNI).
     // *             ARAMA BULUNDU: /?s= arama yapmiyor (404 + popular listesi). Dogru uc:
     // *             /arama-yap?s=<kelime> -> "ceki" 2, "over" 4, "iron" 9 dogru a.tc karti.
-    override var mainUrl              = "https://dizipal1824.com"
+    // * 2026-11-08: 1824 olu (WinError 10054). 1825: baslik "Dizipal Orijinal | yabanci dizi ve film izle",
+    // *             5 yol HTTP 200, /yeni-eklenen-bolumler a.ecl 27 + a.mwr 5, /diziler a.tc 54,
+    // *             /filmler 16, /anime 30, /arama-yap?s=over a.tc 7. Tasarim AYNI.
+    override var mainUrl              = "https://dizipal1825.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"

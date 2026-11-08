@@ -28,7 +28,11 @@ class DiziPal : MainAPI() {
     // *             filmler/platform/netflix/kategori), /bolumler episode-list-item 24,
     // *             /diziler content-card 24, detay h1.series-title + detail-episode-item-wrap 4,
     // *             videoContainer data-cfg + ajax-player-config {"success":true} dogrulandi.
-    override var mainUrl              = "https://dizipal2146.com"
+    // * 2026-11-08: 2146 olu (WinError 10054). 2147: baslik "Dizipal | yabanci dizi izle, film izle",
+    // *             5 yol HTTP 200 (bolumler/diziler/filmler/platform/netflix/kategori), /bolumler
+    // *             episode-list-item 24, /diziler + /filmler ul.content-grid 1 + content-card 24,
+    // *             /platform/netflix + /kategori content-card 20. Tasarim AYNI.
+    override var mainUrl              = "https://dizipal2147.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"
