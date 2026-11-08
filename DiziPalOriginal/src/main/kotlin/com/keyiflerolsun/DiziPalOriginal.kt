@@ -110,7 +110,30 @@ class DiziPalOriginal : MainAPI() {
 
         if (request.data.contains("/yeni-eklenen-bolumler")) {
             // * 2026-10-30: yeni tasarim bolum kartlari a.ecl / a.mwr (aria-label tabanli)
-            home.addAll(document.select("a.ecl, a.mwr").mapNotNull { it.epRowKarti() })
+            // * 2026-11-08: bu kartlarda kapak YOK. Arsiv sayfasindan (/diziler) slug->kapak
+            // * haritasi cikarip bolum kartlarina uyguluyoruz. Ek istek 1 adet, tek seferlik.
+            val kapakHaritasi = try {
+                val arsiv = app.get(
+                    "$mainUrl/diziler",
+                    timeout = 15000, interceptor = interceptor, headers = getHeaders(mainUrl)
+                ).document
+                arsiv.select("a.tc").mapNotNull { a ->
+                    val h = a.attr("href").trim().trim('/')
+                    val slug = h.substringAfterLast("/").removeSuffix("-dizi-izle").removeSuffix("-film-izle")
+                    val i = a.selectFirst("img")
+                    val p = fixUrlNull(
+                        i?.attr("data-src")?.takeIf { it.isNotBlank() }
+                            ?: i?.attr("src")?.takeIf { !it.startsWith("data:") }
+                    )
+                    if (slug.isNotBlank() && p != null) slug to p else null
+                }.toMap()
+            } catch (e: Exception) {
+                Log.w("DiziPalOriginal", "kapak haritasi alinamadi: ${e.message}")
+                emptyMap()
+            }
+            Log.d("DiziPalOriginal", "kapak haritasi: ${kapakHaritasi.size} kayit")
+
+            home.addAll(document.select("a.ecl, a.mwr").mapNotNull { it.epRowKarti(kapakHaritasi) })
         } else {
             // * 2026-10-30: arsiv sayfalari (/diziler /filmler /anime) -> a.tc kartlari
             home.addAll(document.select("a.tc").mapNotNull { it.posterKarti() })
@@ -136,7 +159,7 @@ class DiziPalOriginal : MainAPI() {
 
     // * 2026-10-30 yeni tasarim bolum karti:
     // * <a href="/dizi/slug/4-sezon/8-bolum" class="ecl|mwr" aria-label="BASLIK, 4. Sezon 8. Bölüm ...">
-    private fun Element.epRowKarti(): SearchResponse? {
+    private fun Element.epRowKarti(kapakHaritasi: Map<String, String> = emptyMap()): SearchResponse? {
         val href = fixUrlNull(this.attr("href")) ?: return null
         if (!href.contains("/dizi/")) return null
 
@@ -147,18 +170,28 @@ class DiziPalOriginal : MainAPI() {
             .ifBlank { img?.attr("alt")?.trim() ?: "" }
             .ifBlank { return null }
 
-        val poster = fixUrlNull(
+        // * 2026-11-08 KAPAK DUZELTMESI (kullanici: "son bolumlerde kapak resimleri yok"):
+        // * /yeni-eklenen-bolumler sayfasinda 32 kartin sadece 5'inde <img> var ve o 5'i
+        // * da ayni "brand" bandi (images.cdnhipter.xyz/images/tv/brand/...) -> dizi kapagi DEGIL.
+        // * Gercek kapak SADECE arsiv kartlarinda (a.tc, /diziler sayfasi: 54/54 dolu).
+        // * O yuzden bolum kartinda img yoksa asagida a.tc haritasindan kapak tamamlanir.
+        val hamPoster = fixUrlNull(
             img?.attr("data-src")?.takeIf { it.isNotBlank() }
                 ?: img?.attr("src")?.takeIf { !it.startsWith("data:") }
         )
+        // * "brand" bantlari dizi kapagi degil -> yok say
+        val poster = hamPoster?.takeIf { !it.contains("/images/tv/brand/") }
 
         // * Bolum linkinden seri kok adresi: /dizi/slug/sezon/bolum -> /dizi/slug
         // * 2026-11-04 KRITIK: /dizi/<slug> 404 VERIYOR (Next.js). Gecerli seri sayfasi
         // * /dizi/<slug>-dizi-izle; JSON-LD (TVSeries + containsSeason[].episode[]) SADECE
         // * orada var. Bolum sayfasinda yalnizca TVEpisode blogu + 6 link bulunuyor, bu
         // * yuzden "JSON-LD: 0 sezon, 0 bolum" -> "Konu Bulunamadı / Çok yakında".
-        val seriUrl = href.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
-            ?.let { "${mainUrl}/dizi/${seriIzi(it)}" } ?: href
+        val seriSlug = href.split("/dizi/").lastOrNull()?.split("/")?.take(1)?.firstOrNull()
+        val seriUrl = seriSlug?.let { "${mainUrl}/dizi/${seriIzi(it)}" } ?: href
+
+        // * 2026-11-08: bolum kartinda kapak yok -> arsiv (a.tc) haritasindan tamamla
+        val nihaiPoster = poster ?: seriSlug?.let { kapakHaritasi[it] }
 
         // * Sezon/Bolum bilgisi aria-label veya basliktaki "3. Sezon 4. Bölüm" kismindan
         val kaynak = if (aria.isNotBlank()) aria else baslik
@@ -168,7 +201,7 @@ class DiziPalOriginal : MainAPI() {
         val etiket = if (sezon != null && bolum != null) " (${sezon}x${bolum})" else ""
 
         return newTvSeriesSearchResponse(baslik + etiket, seriUrl, TvType.TvSeries) {
-            this.posterUrl = poster
+            this.posterUrl = nihaiPoster
         }
     }
 

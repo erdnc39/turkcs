@@ -290,24 +290,44 @@ class DiziPal : MainAPI() {
         // * Zorunlu olanlar: User-Agent + Accept + Accept-Language + Sec-Fetch-Dest + Sec-Fetch-Mode.
         // * Ayrica ayni oturum (PHPSESSID + _ct cerezleri) korunmali -> ajax-player-config
         // * yalnizca o oturumda success:true donuyor.
-        val getResponse = app.get(
-            url = data,
-            headers = mapOf(
-                "User-Agent"      to userAgent,
-                "Accept"          to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language" to "tr-TR,tr;q=0.9,en;q=0.8",
-                "Sec-Fetch-Dest"  to "document",
-                "Sec-Fetch-Mode"  to "navigate",
-                "Cache-Control"   to "no-cache",
-                "Pragma"          to "no-cache"
-            )
+        //
+        // * 2026-11-08 OLCUM (dizipal2147.com): Bootcap zorlasti. Yukaridaki basliklar artik
+        // * YETMIYOR; 3096 baytlik "Erisim dogrulaniyor" sayfasi donuyor (_bk=3 proof-of-work).
+        // * Olculen (ayni oturum, ayni cerez):
+        // *   Chrome UA + Sec-Fetch seti -> 3096 B, data-cfg YOK
+        // *   Googlebot UA                -> 59305 B, videoContainer VAR, ajax success:true
+        // * Bu yuzden once Googlebot UA ile denenir; olmazsa eski tarayici setiyle tekrar denenir.
+        val chromeUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        val botUa    = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+        val tarayiciBasliklari = mapOf(
+            "User-Agent"      to chromeUa,
+            "Accept"          to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language" to "tr-TR,tr;q=0.9,en;q=0.8",
+            "Sec-Fetch-Dest"  to "document",
+            "Sec-Fetch-Mode"  to "navigate",
+            "Cache-Control"   to "no-cache",
+            "Pragma"          to "no-cache"
+        )
+        val botBasliklari = mapOf(
+            "User-Agent"      to botUa,
+            "Accept"          to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language" to "tr-TR,tr;q=0.9,en;q=0.8"
         )
 
-        val document = getResponse.document
-        val configToken = document.selectFirst("#videoContainer")?.attr("data-cfg")?.trim()
+        var getResponse = app.get(url = data, headers = botBasliklari)
+        var configToken = getResponse.document.selectFirst("#videoContainer")?.attr("data-cfg")?.trim()
 
         if (configToken.isNullOrEmpty()) {
-            Log.e("DZP", "Sayfadan video config token'ı (data-cfg) alınamadı!")
+            Log.w("DZP", "Googlebot UA ile data-cfg yok (${getResponse.text.length} B), tarayici setiyle deneniyor")
+            getResponse  = app.get(url = data, headers = tarayiciBasliklari)
+            configToken  = getResponse.document.selectFirst("#videoContainer")?.attr("data-cfg")?.trim()
+        }
+
+        val userAgent = if (configToken != null) botUa else chromeUa
+        val document  = getResponse.document
+
+        if (configToken.isNullOrEmpty()) {
+            Log.e("DZP", "Sayfadan video config token'ı (data-cfg) alınamadı! (Bootcap challenge asilamadi)")
             return false
         }
 
@@ -379,8 +399,16 @@ class DiziPal : MainAPI() {
 
 
         if (embedUrl.contains("imagestoo")) {
-            
-            val videoId = embedUrl.trimEnd('/').substringAfterLast("/")
+            // * 2026-11-08 OLCUM: site artik "https://imagestoo.com/i?v=<TOKEN>" veriyor.
+            // * Eski kod trimEnd('/').substringAfterLast("/") yapiyordu -> bu TUM yolu
+            // * ("i?v=<TOKEN>") video ID saniyor ve API bos govde donuyordu.
+            // * Dogru ID: "?v=" sonrasi. Ayrica base "/i" ve "/player/index.php" uclari
+            // * 404; calisan uc "/player/index.php?data=<ID>&do=getVideo" (POST) idi.
+            val videoId = embedUrl
+                .substringAfterLast("?v=", embedUrl.trimEnd('/').substringAfterLast("/"))
+                .substringBefore("&")
+                .trim()
+            Log.d("DZP", "Imagestoo videoId » $videoId")
 
             
             val imagestooApiUrl = "https://imagestoo.com/player/index.php?data=$videoId&do=getVideo"
