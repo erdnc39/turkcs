@@ -32,7 +32,7 @@ class DiziPal : MainAPI() {
     // *             5 yol HTTP 200 (bolumler/diziler/filmler/platform/netflix/kategori), /bolumler
     // *             episode-list-item 24, /diziler + /filmler ul.content-grid 1 + content-card 24,
     // *             /platform/netflix + /kategori content-card 20. Tasarim AYNI.
-    override var mainUrl              = "https://dizipal2147.com"
+    override var mainUrl              = "https://dizipal2148.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -281,8 +281,6 @@ class DiziPal : MainAPI() {
     ): Boolean {
         Log.d("DZP", "Oynatılacak Bölüm Linki » $data")
 
-        val userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-
         // 1. AŞAMA: GET isteği atıp hem Token'ı hem de ÇEREZLERİ alıyoruz
         // * 2026-11-01 KRITIK: site Bootcap bot korumasi ekledi (_bcs challenge).
         // * Tarayici disi istekler 3 KB'lik "Dogrulama" sayfasi aliyor, videoContainer gelmiyor.
@@ -324,7 +322,6 @@ class DiziPal : MainAPI() {
         }
 
         val userAgent = if (configToken != null) botUa else chromeUa
-        val document  = getResponse.document
 
         if (configToken.isNullOrEmpty()) {
             Log.e("DZP", "Sayfadan video config token'ı (data-cfg) alınamadı! (Bootcap challenge asilamadi)")
@@ -508,10 +505,22 @@ class DiziPal : MainAPI() {
         // *   calisan: .../ujgwfx4lhhpt_n/index-v1-a1.m3u8      -> HTTP 200, 32 KB
         // *   calisan: .../ujgwfx4lhhpt_n/index-a1.m3u8         -> ses grubu
         // * Bu yuzden master yerine varyant manifesti turetiyoruz.
+        //
+        // * 2026-11-09 OLCUM (dizipal2148.com / formationfeed.net):
+        // *   embed canli -> sources.file = "https://s4.superadjacentsoddenly.xyz/hls2/01/00007/smir00c6bag9_,n,h,.urlset/master.m3u8?v=..."
+        // *   master (v ile veya v'siz, her referer'da) -> 403
+        // *   .../smir00c6bag9_n/index-v1-a1.m3u8 -> 200, 8246 B, 92 segment
+        // *   seg-1-v1-a1.jpg -> 200, 2415800 B, ilk 4 bayt 47 40 00 10 (MPEG-TS sync 0x47, PID 0x100)
+        // *   Segmentler .jpg uzantili ama gercek icerik MPEG-TS; farkli .pics alan adlarindan
+        // *   geliyorlar (s4.whimpered.pics, s4.marmorated.pics, ...) ama oynatma calisiyor.
+        //
+        // * KRITIK: "kok" = master URL'in TAM yol kismi ("/hls2/01/00007/smir00c6bag9_,n,h,.urlset").
+        // * Eski kod substringBefore("/") kullaniyordu; bu TUM yolu ilk "/" karakterinde kesip
+        // * sonucu "" yapiyordu -> uretilen adres "/smir00c6bag9_n/index-v1-a1.m3u8" gibi
+        // * semasiz/host'suz cikiyordu. substringBeforeLast("/") ile host korunuyor.
         val finalM3u8Url = if (extractedUrl.contains("master.m3u8")) {
             val kok = extractedUrl.substringBefore("/master.m3u8")
-            // * "...ujgwfx4lhhpt_,n,h,.urlset" -> "...ujgwfx4lhhpt_n"
-            val yol = kok.substringBefore("/")
+            val yol = kok.substringBeforeLast("/")
             val dosya = kok.substringAfterLast("/")          // ujgwfx4lhhpt_,n,h,.urlset
             val anahtar = dosya.substringBefore("_,")        // ujgwfx4lhhpt
             "$yol/${anahtar}_n/index-v1-a1.m3u8"

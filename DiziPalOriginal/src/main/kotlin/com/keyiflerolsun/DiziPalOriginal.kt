@@ -536,10 +536,31 @@ class DiziPalOriginal : MainAPI() {
         try {
             val cfg = JSONObject(cfgMetni)
             val kaynaklar = cfg.optJSONArray("sources") ?: return false
+
+            // * 2026-11-09 OLCUM: dplayer82.site player'i artik "gate" proof-of-work istiyor.
+            // *   NP_CONFIG icinde:  "gate":{"n":"MQ9cFiWmde9t","b":12}
+            // *   gate YOKSA veya p eklenmezse  nm.php  HTTP 404, govde 0 bayt donuyor.
+            // *   p eklendiginde: nm.php -> 200, 2383 B master m3u8.
+            // * Cozum np.js icindeki window.NP_GATE ile BIREBIR ayni:
+            // *   _pncn = "3ehfXg-c2f"  (String.fromCharCode(51,101,104,102,88,103,45,99,50,102))
+            // *   i=0..1e8: _awf = i.toString(36)      // 36 TABAN, ondalik degil
+            // *              SHA-256(n + _pncn + _awf + _pncn)
+            // *              (hash_kelime[5] & 4095) == 0  ise _awf doner
+            // *   hash_kelime[5] = ozet[20..24] big-endian uint32 (JS'te isaretli int; & 4095
+            // *   dusuk 12 biti aldigi icin isaret farki sonucu degistirmiyor).
+            // * Olculen: n="NIthc6IApA2d" -> p="1yz" (i=2555). Bazi n'lerde sifir aday cikabiliyor;
+            // * o durumda ham master yine deneniyor (asagida).
+            val gateProof = gateCoz(cfg.optJSONObject("gate"))
+
             for (i in 0 until kaynaklar.length()) {
                 val kaynak = kaynaklar.optJSONObject(i) ?: continue
-                val master = kaynak.optString("master").trim()
+                var master = kaynak.optString("master").trim()
                 if (master.isEmpty()) continue
+
+                if (gateProof != null && !master.contains("&p=")) {
+                    master = "$master&p=$gateProof"
+                    Log.d("DiziPalOriginal", "--> gate cozuldu (p=$gateProof), master: ${master.take(90)}…")
+                }
 
                 val varyantlar = masterVaryantlari(master, iframeUrl)
                 if (varyantlar.isEmpty()) continue
@@ -706,7 +727,42 @@ class DiziPalOriginal : MainAPI() {
         }
     }
 
+    // * dplayer82.site "gate" proof-of-work cozucusu (np.js icindeki window.NP_GATE birebir)
+    // * Donus: eklenmesi gereken "p" degeri; gate yoksa/cozulemezse null.
+    private fun gateCoz(gate: JSONObject?): String? {
+        val n = gate?.optString("n")?.trim().orEmpty()
+        if (n.isEmpty()) return null
+        // * String.fromCharCode(51,101,104,102,88,103,45,99,50,102)
+        val pn = "3ehfXg-c2f"
+        val ozet = java.security.MessageDigest.getInstance("SHA-256")
+        for (i in 0 until 3_000_000) {
+            val awf = Integer.toString(i, 36)
+            val h = ozet.digest((n + pn + awf + pn).toByteArray(Charsets.UTF_8))
+            // * JS'te ee(...)[5] = 6. 32-bit kelime = ozet[20..24]
+            val kelime5 = ((h[20].toInt() and 0xFF) shl 24) or
+                          ((h[21].toInt() and 0xFF) shl 16) or
+                          ((h[22].toInt() and 0xFF) shl 8)  or
+                           (h[23].toInt() and 0xFF)
+            if ((kelime5 and 4095) == 0) {
+                Log.d("DiziPalOriginal", "--> gate: n=$n p=$awf (i=$i)")
+                return awf
+            }
+        }
+        Log.w("DiziPalOriginal", "--> gate cozulemedi (n=$n), ham master denenecek")
+        return null
+    }
+
     // * master manifest -> #EXT-X-STREAM-INF varyantlari (yoksa master'in kendisi)
+    // * 2026-11-09 OLCUM (canli, dizipal1825 -> sn.dplayer82.site):
+    // *   nm.php?v=<tok>&p=<proof>  -> 200, 2383 B
+    // *     #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",...,URI="https://sn.dplayer82.site/nl.php?v=..."
+    // *     #EXT-X-STREAM-INF ...  -> nl.php?v=<VIDEO>  (ses grubu ayri nl.php)
+    // *   varyant nl.php -> 200, 28694 B, 248 segment
+    // *     segmentler: https://lkm-<rastgele>.t15jsn091o.com/f/.../6f315.jpg?v=1
+    // *   seg -> 200, ilk8 = 47 40 11 10 00 42 f0 25  => MPEG-TS sync 0x47 DOGRULANDI
+    // * Dikkat: EXT-X-MEDIA URI'leri de "nl.php" ve master gibi p istiyor olabilir; bu yuzden
+    // * varyant listesine sadece STREAM-INF satirlarini aliyoruz (ses grubu CloudStream
+    // * tarafindan master uzerinden zaten cozulur).
     private suspend fun masterVaryantlari(master: String, iframeUrl: String): List<String> {
         val varyantlar = mutableListOf<String>()
         try {
@@ -721,6 +777,9 @@ class DiziPalOriginal : MainAPI() {
                         }
                     }
                 }
+            } else if (man.contains("#EXTINF")) {
+                // * Master zaten medya manifesti -> dogrudan kullan
+                varyantlar.add(master)
             }
         } catch (e: Exception) {
             Log.e("DiziPalOriginal", "--> master alinamadi: ${e.message}")
