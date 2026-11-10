@@ -370,15 +370,27 @@ class DiziPal : MainAPI() {
             }
         }
 
-        val encObj = configJson.optJSONObject("enc")
-        if (encObj == null) {
-            Log.e("DZP", "enc nesnesi bulunamadı! config: $configJson")
-            return false
-        }
+        // * 2026-11-10 OLCUM: site artik iki farkli config bicimi donduruyor:
+        // *   A) eski sifreli  : {"success":true,"enc":{k1,k2,iv,c}} -> decryptEnc
+        // *   B) yeni duz      : {"success":true,"config":{"v":"<embed-url>","t":"embed"}}
+        // * Eski kod yalnizca "enc" aradigi icin B biciminde "enc nesnesi bulunamadı"
+        // * deyip TUM bolumleri sessizce atiyordu (logcat 10.11.2026).
+        // * Ayrica bazi yanitlarda kok dogrudan {"v":..,"t":..} olabiliyor.
+        val cfgGovde = configJson.optJSONObject("config") ?: configJson
 
-        val embedUrlRaw = decryptEnc(encObj)
+        val encObj = configJson.optJSONObject("enc") ?: cfgGovde.optJSONObject("enc")
+        val duzVideo = cfgGovde.optString("v").takeIf { it.isNotBlank() }
+
+        val embedUrlRaw = when {
+            encObj != null -> decryptEnc(encObj)
+            duzVideo != null -> duzVideo
+            else -> null
+        }
+        if (encObj == null && duzVideo == null) {
+            Log.e("DZP", "config içinde ne 'enc' ne de düz 'v' var! config: $configJson")
+        }
         if (embedUrlRaw.isNullOrEmpty()) {
-            Log.e("DZP", "Embed URL decrypt edilemedi!")
+            Log.e("DZP", "Embed URL çözülemedi (enc null veya decrypt başarısız)! config: $configJson")
             return false
         }
 
