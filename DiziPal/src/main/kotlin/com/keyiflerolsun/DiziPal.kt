@@ -576,7 +576,15 @@ class DiziPal : MainAPI() {
                 // * 2026-11-03 OLCUM: CDN yalnizca formationfeed.net referer'ini kabul
                 // * ediyor. dizipal2146.com referer'i ve referersiz istekler HTTP 403.
                 // * (olculen: referer=formationfeed.net/ -> 200, 32430 B)
+                // * 2026-11-11 OLCUM (dizipal2148.com, s8.antiantibody.pics):
+                // *   SADECE referer YETMIYOR. Segment (.jpg/.ts) istekleri referer
+                // *   verilse bile HTTP 403 donuyor; "Origin: https://formationfeed.net"
+                // *   eklendiginde HTTP 200 + 499704 B, ilk bayt 0x47, 188'in kati.
+                // *   Olculen varyant: dizipal2148.com / kusatma-altinda -> seg-1-v1-a1.jpg
+                // *   Origin YOK: 403 (0 B) | Origin VAR: 200 (499704 B, 0x47).
+                // *   Bu yuzden medya isteklerine Origin basligi da ekleniyor.
                 referer = "https://formationfeed.net/"
+                headers = mapOf("Origin" to "https://formationfeed.net")
                 quality = Qualities.Unknown.value
             }
         )
