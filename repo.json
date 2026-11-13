@@ -1,0 +1,8 @@
+{
+    "name": "TurkCS | Türkçe Eklenti Deposu",
+    "description": "Türkçe içerikli eklenti havuzu",
+    "manifestVersion": 1,
+    "pluginLists": [
+      "https://raw.githubusercontent.com/erdnc39/turkcs/builds/plugins.json"
+    ]
+}
