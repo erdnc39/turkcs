@@ -55,7 +55,11 @@ class DiziPalOriginal : MainAPI() {
     // * 2026-11-08: 1824 olu (WinError 10054). 1825: baslik "Dizipal Orijinal | yabanci dizi ve film izle",
     // *             5 yol HTTP 200, /yeni-eklenen-bolumler a.ecl 27 + a.mwr 5, /diziler a.tc 54,
     // *             /filmler 16, /anime 30, /arama-yap?s=over a.tc 7. Tasarim AYNI.
-    override var mainUrl              = "https://dizipal1825.com"
+    // * 2026-11-13: 1825 artik 302 ile 1826'ya gidiyor (SAGLIK.py yakaladi). 1826 dogrudan da
+    // *             HTTP 200, baslik "Dizipal Orijinal | yabanci dizi ve film izle",
+    // *             /yeni-eklenen-bolumler a.ecl 27 + a.mwr 5, /diziler a.tc 54, /filmler a.tc 16,
+    // *             /anime a.tc 30, /arama-yap?s=over a.tc 7. Yapi AYNI, sadece adres degisti.
+    override var mainUrl              = "https://dizipal1826.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -509,7 +513,7 @@ class DiziPalOriginal : MainAPI() {
                 .find(iframeHtml)?.groupValues?.get(1)
 
         if (cfgMetni != null) {
-            val npSonuc = npConfigCoz(cfgMetni, iframeUrl, subtitleCallback, callback)
+            val npSonuc = npConfigCoz(cfgMetni, iframeUrl, subtitleCallback, callback, iframeHtml)
             if (npSonuc) return true
             Log.w("DiziPalOriginal", "--> NP_CONFIG ise yaramadi, yeni akis denenecek")
         } else {
@@ -530,7 +534,8 @@ class DiziPalOriginal : MainAPI() {
         cfgMetni: String,
         iframeUrl: String,
         subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
+        callback: (ExtractorLink) -> Unit,
+        iframeHtml: String? = null
     ): Boolean {
         var bulundu = false
         try {
@@ -550,7 +555,7 @@ class DiziPalOriginal : MainAPI() {
             // *   dusuk 12 biti aldigi icin isaret farki sonucu degistirmiyor).
             // * Olculen: n="NIthc6IApA2d" -> p="1yz" (i=2555). Bazi n'lerde sifir aday cikabiliyor;
             // * o durumda ham master yine deneniyor (asagida).
-            val gateProof = gateCoz(cfg.optJSONObject("gate"))
+            val gateProof = gateCoz(cfg.optJSONObject("gate"), iframeHtml)
 
             for (i in 0 until kaynaklar.length()) {
                 val kaynak = kaynaklar.optJSONObject(i) ?: continue
@@ -567,15 +572,22 @@ class DiziPalOriginal : MainAPI() {
 
                 val kalite = kaynak.optString("quality").ifBlank { "Orijinal" }
                 for ((sira, v) in varyantlar.withIndex()) {
+                    // * 2026-11-10 KRITIK: varyant adresi de (nl.php) gate "p" istiyor.
+                    // * Eksik verilirse player "bad io http error 2004" / 404 aliyor.
+                    // * masterVaryantlari zaten p'yi ekliyor; yine de garanti altina aliyoruz.
+                    var varyantUrl = v
+                    if (gateProof != null && !varyantUrl.contains("&p=") && !varyantUrl.contains("?p=")) {
+                        varyantUrl = "$varyantUrl&p=$gateProof"
+                    }
                     callback(
                         newExtractorLink(
                             source = this.name,
                             name = if (varyantlar.size > 1) "${this.name} · $kalite #$sira" else "${this.name} · $kalite",
-                            url = v,
+                            url = varyantUrl,
                             type = ExtractorLinkType.M3U8
                         ) {
                             this.referer = iframeUrl
-                            this.quality = if (v.contains("1080")) 1080 else if (v.contains("720")) 720 else 0
+                            this.quality = if (varyantUrl.contains("1080")) 1080 else if (varyantUrl.contains("720")) 720 else 0
                         }
                     )
                 }
@@ -727,25 +739,57 @@ class DiziPalOriginal : MainAPI() {
         }
     }
 
-    // * dplayer82.site "gate" proof-of-work cozucusu (np.js icindeki window.NP_GATE birebir)
+    // * dplayer82.site "gate" proof-of-work cozucusu.
+    // *
+    // * 2026-11-10 OLCUM (CANLI): Algoritma DEGISTI. Eski surum artik 404 uretiyor.
+    // *   ESKI (v118 ve oncesi): SHA-256(n + "3ehfXg-c2f" + i.toString(36) + "3ehfXg-c2f")
+    // *                           -> kelime5 (= ozet[20..24]) & 4095 == 0
+    // *   YENI (v119+): HTML'in ICINE gomulu window.NP_GATE override'i gecerli (np.js'teki
+    // *                 fallback DEGIL). Sayfadaki gercek kod:
+    // *     window.NP_GATE=function(_vy,_ego){
+    // *       var _bmuq=String.fromCharCode(116,77,122,122,101,100,79,90,117,105); // "tMzzedOZui"
+    // *       for(var _rt=0;_rt<1e8;_rt++){
+    // *         var _ihd=_rt.toString(10);                                    // ONDALIK
+    // *         if((_ego(_ihd+'|'+_bmuq+'|'+_vy)[7]>>>20)===0) return _ihd;   // 8. kelime
+    // *       } return ""; };
+    // *   Yani: SHA-256(i + "|" + SALT + "|" + n),  word[7] >>> 20 == 0  (ust 20 bit sifir)
+    // *   SALT (_bmuq) her sayfada ayni: "tMzzedOZui". Yine de HTML'den OKUMAK daha guvenli;
+    // *   bulunamazsa bu sabit kullanilir.
+    // *   Olculen: n="fSv1rgp2NHfZ" -> p="7183" -> nm.php 200, 2383 B master.
     // * Donus: eklenmesi gereken "p" degeri; gate yoksa/cozulemezse null.
-    private fun gateCoz(gate: JSONObject?): String? {
+    private fun gateCoz(gate: JSONObject?, html: String? = null): String? {
         val n = gate?.optString("n")?.trim().orEmpty()
         if (n.isEmpty()) return null
-        // * String.fromCharCode(51,101,104,102,88,103,45,99,50,102)
-        val pn = "3ehfXg-c2f"
+
+        // * SALT'i HTML'deki String.fromCharCode(...) dizisinden coz; yoksa sabit.
+        var salt = "tMzzedOZui"
+        try {
+            if (html != null) {
+                val m = Regex("""_bmuq\s*=\s*String\.fromCharCode\(([\d,\s]+)\)""").find(html)
+                val kodlar = m?.groupValues?.get(1)
+                    ?.split(",")?.mapNotNull { it.trim().toIntOrNull() }
+                if (!kodlar.isNullOrEmpty()) {
+                    salt = kodlar.joinToString("") { it.toChar().toString() }
+                    Log.d("DiziPalOriginal", "--> gate SALT HTML'den okundu: \"$salt\"")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("DiziPalOriginal", "--> gate SALT okunamadi, sabit kullanilacak: ${e.message}")
+        }
+
         val ozet = java.security.MessageDigest.getInstance("SHA-256")
-        for (i in 0 until 3_000_000) {
-            val awf = Integer.toString(i, 36)
-            val h = ozet.digest((n + pn + awf + pn).toByteArray(Charsets.UTF_8))
-            // * JS'te ee(...)[5] = 6. 32-bit kelime = ozet[20..24]
-            val kelime5 = ((h[20].toInt() and 0xFF) shl 24) or
-                          ((h[21].toInt() and 0xFF) shl 16) or
-                          ((h[22].toInt() and 0xFF) shl 8)  or
-                           (h[23].toInt() and 0xFF)
-            if ((kelime5 and 4095) == 0) {
-                Log.d("DiziPalOriginal", "--> gate: n=$n p=$awf (i=$i)")
-                return awf
+        for (i in 0 until 5_000_000) {
+            val aday = i.toString()               // * toString(10) -> ONDALIK (36 taban DEGIL)
+            val h = ozet.digest("$aday|$salt|$n".toByteArray(Charsets.UTF_8))
+            // * JS'te ee(...)[7] = 8. 32-bit kelime = ozet[28..32]
+            val kelime7 = ((h[28].toInt() and 0xFF) shl 24) or
+                          ((h[29].toInt() and 0xFF) shl 16) or
+                          ((h[30].toInt() and 0xFF) shl 8)  or
+                           (h[31].toInt() and 0xFF)
+            // * JS >>> 20 isaretsiz kaydirma; ust 20 bit sifirsa sonuc 0 olur.
+            if ((kelime7 ushr 20) == 0) {
+                Log.d("DiziPalOriginal", "--> gate: n=$n p=$aday (i=$i, salt=$salt)")
+                return aday
             }
         }
         Log.w("DiziPalOriginal", "--> gate cozulemedi (n=$n), ham master denenecek")
@@ -765,6 +809,14 @@ class DiziPalOriginal : MainAPI() {
     // * tarafindan master uzerinden zaten cozulur).
     private suspend fun masterVaryantlari(master: String, iframeUrl: String): List<String> {
         val varyantlar = mutableListOf<String>()
+        // * 2026-11-10: gate proof ("&p=") master'da var; varyant URL'lerine de TASINMALI.
+        // * Master: ".../nm.php?v=XXX&p=7183" -> varyant: ".../nl.php?v=YYY" + "&p=7183"
+        val gateP = Regex("""[&?]p=([^&]+)""").find(master)?.groupValues?.get(1)
+        fun pEkle(u: String): String {
+            if (gateP == null) return u
+            if (u.contains("&p=") || u.contains("?p=")) return u
+            return "$u&p=$gateP"
+        }
         try {
             val man = app.get(master, headers = getHeaders(iframeUrl), timeout = 20000L).text
             if (man.contains("#EXT-X-STREAM-INF")) {
@@ -773,20 +825,22 @@ class DiziPalOriginal : MainAPI() {
                     if (satirlar[j].startsWith("#EXT-X-STREAM-INF")) {
                         val sonraki = satirlar.getOrNull(j + 1)?.trim().orEmpty()
                         if (sonraki.isNotEmpty() && !sonraki.startsWith("#")) {
-                            varyantlar.add(if (sonraki.startsWith("http")) sonraki else fixUrl(sonraki))
+                            val ham = if (sonraki.startsWith("http")) sonraki else fixUrl(sonraki)
+                            varyantlar.add(pEkle(ham))
                         }
                     }
                 }
             } else if (man.contains("#EXTINF")) {
                 // * Master zaten medya manifesti -> dogrudan kullan
-                varyantlar.add(master)
+                varyantlar.add(pEkle(master))
             }
         } catch (e: Exception) {
             Log.e("DiziPalOriginal", "--> master alinamadi: ${e.message}")
         }
         if (varyantlar.isEmpty()) {
-            masterVaryantTuret(master)?.let { varyantlar.add(it) } ?: varyantlar.add(master)
+            masterVaryantTuret(master)?.let { varyantlar.add(pEkle(it)) } ?: varyantlar.add(master)
         }
+        Log.d("DiziPalOriginal", "--> masterVaryantlari: ${varyantlar.size} varyant, gateP=$gateP")
         return varyantlar
     }
 

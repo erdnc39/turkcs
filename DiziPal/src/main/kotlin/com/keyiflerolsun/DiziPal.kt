@@ -12,6 +12,11 @@ import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import android.util.Base64
 
+// * 2026-11-13: formationfeed.net CDN'i (s8.* alan adlari) YALNIZCA Googlebot UA'sina 200 donuyor.
+// * Chrome/tarayici UA'si ile master ve segment istekleri HTTP 403 aliyor (ayni oturumda olculdu).
+// * Player'a verilen ExtractorLink basliklarinda bu UA tasinmali, yoksa video acilmaz.
+private const val CDN_UA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+
 class DiziPal : MainAPI() {
     // ! Eski Dizipal sablonu (content-grid / episodes-list-grid / ajax-search) sadece bu adreste calisiyor
     // * 2026-10-15: 2139 SNI engelli -> site 2140'a tasti (5 yol 200, TR baslik dogrulandi)
@@ -32,7 +37,15 @@ class DiziPal : MainAPI() {
     // *             5 yol HTTP 200 (bolumler/diziler/filmler/platform/netflix/kategori), /bolumler
     // *             episode-list-item 24, /diziler + /filmler ul.content-grid 1 + content-card 24,
     // *             /platform/netflix + /kategori content-card 20. Tasarim AYNI.
-    override var mainUrl              = "https://dizipal2148.com"
+    // * 2026-11-13: 2148 OLU (TLS el sikismasinda RST, WinError 10054; google.com kontrolu 200
+    // *             -> ag saglam, alan adi gercekten olmus). 2149: 4 yol HTTP 200, baslik
+    // *             "Dizipal | yabanci dizi izle, film izle", /bolumler episodes-list-grid 1 +
+    // *             a.episode-list-item 24 + .ep-title 24, /diziler ul.content-grid 1 + div.card-info 24,
+    // *             /ajax-search {"success":true} (over -> Tokyo Override, iron -> Ironheart).
+    // *             Tasarim AYNI, sadece adres degisti.
+    // ! 2152 REDDEDILDI: dizipal.rest'e 302 -> baska site (/arama 404, episodes-list-grid 0,
+    // ! card-info 0, /ajax-search 404). Karistirmayin.
+    override var mainUrl              = "https://dizipal2149.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -583,8 +596,20 @@ class DiziPal : MainAPI() {
                 // *   Olculen varyant: dizipal2148.com / kusatma-altinda -> seg-1-v1-a1.jpg
                 // *   Origin YOK: 403 (0 B) | Origin VAR: 200 (499704 B, 0x47).
                 // *   Bu yuzden medya isteklerine Origin basligi da ekleniyor.
+                // * 2026-11-13 OLCUM (dizipal2149.com, s8.superadjacentsoddenly.xyz + s8.antiantibody.pics):
+                // *   ASIL KOK NEDEN USER-AGENT. Ayni oturumda, ayni saniyede olculdu:
+                // *     Chrome UA + cerez + Referer + Origin -> HTTP 403
+                // *     Chrome UA + sadece Referer            -> HTTP 403
+                // *     Googlebot UA + sadece Referer         -> HTTP 200, 761 B, #EXTM3U
+                // *   Yani v130'da eklenen Origin basligi 403'u COZMEDI (hala 403). Referer/Origin
+                // *   sart degil ama zarari yok; bu yuzden geriye uyumlu olarak KORUNUYOR ve
+                // *   uzerine Googlebot User-Agent EKLENIYOR. Player UA'yi tasimazsa master ve
+                // *   segment istekleri 403 alir, oynatma baslamaz.
                 referer = "https://formationfeed.net/"
-                headers = mapOf("Origin" to "https://formationfeed.net")
+                headers = mapOf(
+                    "Origin"     to "https://formationfeed.net",
+                    "User-Agent" to CDN_UA
+                )
                 quality = Qualities.Unknown.value
             }
         )
