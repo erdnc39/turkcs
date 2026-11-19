@@ -10,7 +10,15 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addActors
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 
 class DiziYou : MainAPI() {
-    override var mainUrl              = "https://www.diziyou.one"
+    // * 2026-11-19 ADRES DEGISIKLIGI diziyou.one -> diziyou.love:
+    // * www.diziyou.one bu agdan SNI seviyesinde ENGELLENIYOR (DPI, SNI'a bakip RST).
+    // * Olcum ayni IP 188.114.96.7: SNI=www.diziyou.one -> Reset | SNI=cloudflare.com -> 200.
+    // * Site OLU DEGIL, eklenti bozuk degil; sadece bu agdan erisilemiyor.
+    // * www.diziyou.love ayni tasarim: div.title=7, list-series-main=56, cat-title-main=56,
+    // * /?s=over -> div.incontent div#list-series=3 (arama CALISIYOR).
+    // * DIKKAT: www ZORUNLU — diziyou.love (www'siz) 301 donuyor.
+    // * TAM OYNATMA DOGRULANDI (2026-11-19): segment 253612 B, video/mp2t, ilk bayt 0x47.
+    override var mainUrl              = "https://www.diziyou.love"
     override var name                 = "DiziYou"
     override val hasMainPage          = true
     override var lang                 = "tr"

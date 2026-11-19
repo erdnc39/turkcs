@@ -45,7 +45,16 @@ class DiziPal : MainAPI() {
     // *             Tasarim AYNI, sadece adres degisti.
     // ! 2152 REDDEDILDI: dizipal.rest'e 302 -> baska site (/arama 404, episodes-list-grid 0,
     // ! card-info 0, /ajax-search 404). Karistirmayin.
-    override var mainUrl              = "https://dizipal2149.com"
+    // * 2026-11-19 ADRES DEGISIKLIGI 2149 -> 2150:
+    // * dizipal2149.com bu agdan SNI seviyesinde ENGELLENIYOR (DPI, TLS ClientHello'daki SNI'a
+    // * bakip RST atiyor). Olcum ayni IP 172.67.222.113 uzerinde:
+    // *   SNI=dizipal2149.com -> ConnectionReset (WinError 10054)
+    // *   SNI=cloudflare.com  -> HTTP 200  (yani IP/ag saglam, engel isim bazli)
+    // * Site OLU DEGIL, eklenti bozuk degil; sadece bu agdan erisilemiyor.
+    // * dizipal2150.com ayni tasarim: /bolumler episodes-list-grid=1 + episode-list-item=24,
+    // * /diziler content-grid=1 + card-info=24, /ajax-search?q=over {"success":true}.
+    // * TAM OYNATMA DOGRULANDI (2026-11-19): segment 2439864 B, 188'in kati, ilk bayt 0x47.
+    override var mainUrl              = "https://dizipal2150.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"
