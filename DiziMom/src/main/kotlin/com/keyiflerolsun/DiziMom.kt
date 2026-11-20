@@ -14,7 +14,14 @@ class DiziMom : MainAPI() {
     // * yapisi (div.single-item / div.episode-box / div.bolumust) artik YOK.
     // * Yeni adres ddizimom.net; www.dizidad.com artik Let's Encrypt YES2 zinciri
     // * yuzunden cihazda dogrulanamiyor, bu yuzden orasi kullanilmiyor.
-    override var mainUrl              = "https://ddizimom.net"
+    // * 2026-11-20 ADRES DEGISIKLIGI ddizimom.net -> ddizimom.icu:
+    // * ddizimom.net bu agdan SNI seviyesinde ENGELLENIYOR (DPI, SNI'a bakip RST atiyor).
+    // * Site OLU DEGIL, eklenti bozuk degil; sadece bu agdan erisilemiyor.
+    // * ddizimom.icu AYNI tasarim (Laravel): /diziler "a.group.block"=24, detayda h1 + bolum
+    // * linkleri /dizi/<slug>/sezon-N/bolum-N, bolumde data-pv + play2.pilavyerplay.top.
+    // * TAM OYNATMA DOGRULANDI (2026-11-20): segment AES-128 sifreli -> IV ETIKETTE VAR
+    // * (EXT-X-KEY IV=0x...), decrypt sonrasi 995460 B = 188x5295 paket, hepsi 0x47 sync.
+    override var mainUrl              = "https://ddizimom.icu"
     override var name                 = "DiziMom"
     override val hasMainPage          = true
     override var lang                 = "tr"
