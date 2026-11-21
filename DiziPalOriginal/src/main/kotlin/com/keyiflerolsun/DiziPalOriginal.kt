@@ -59,7 +59,18 @@ class DiziPalOriginal : MainAPI() {
     // *             HTTP 200, baslik "Dizipal Orijinal | yabanci dizi ve film izle",
     // *             /yeni-eklenen-bolumler a.ecl 27 + a.mwr 5, /diziler a.tc 54, /filmler a.tc 16,
     // *             /anime a.tc 30, /arama-yap?s=over a.tc 7. Yapi AYNI, sadece adres degisti.
-    override var mainUrl              = "https://dizipal1826.com"
+    // * 2026-11-21 ADRES DEGISIKLIGI 1826 -> 1827: dizipal1826.com artik HTTP **301** ile
+    // *             dizipal1827.com'a gidiyor (hem Chrome hem Googlebot UA olculdu).
+    // *             1827 canli: baslik "Dizipal Orijinal | yabanci dizi ve film izle",
+    // *             / 200/174707B, /diziler 200/211890B, /filmler 200/165801B.
+    // *             (/bolumler bu sitede 404 — o yol yalnizca DiziPal'de var, burada kullanilmaz.)
+    // *             TASARIM AYNI: Next.js RSC + "enc":{ciphertext,iv,salt} + "k".
+    // *             decryptEnc mantigi 1827'de AYNEN calisiyor; olculdu ->
+    // *             '//sn.dplayer82.site/iframe.php?v=0aacda6a1daf23622e29c0d47c5a67a9'
+    // * ! OYNATMA HALA DOGRULANAMAZ: dplayer82.site (sn./four.) HTTP 403
+    // *             "Attention Required! | Cloudflare" — cozulemez IP bani, JS challenge DEGIL.
+    // *             Yani adres duzeltmesi gerekli ama tek basina yeterli degil; ban kalkinca acilir.
+    override var mainUrl              = "https://dizipal1827.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
