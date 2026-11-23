@@ -11,6 +11,7 @@ import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import android.util.Base64
+import kotlinx.coroutines.delay
 
 // * 2026-11-13: formationfeed.net CDN'i (s8.* alan adlari) YALNIZCA Googlebot UA'sina 200 donuyor.
 // * Chrome/tarayici UA'si ile master ve segment istekleri HTTP 403 aliyor (ayni oturumda olculdu).
@@ -43,18 +44,22 @@ class DiziPal : MainAPI() {
     // *             a.episode-list-item 24 + .ep-title 24, /diziler ul.content-grid 1 + div.card-info 24,
     // *             /ajax-search {"success":true} (over -> Tokyo Override, iron -> Ironheart).
     // *             Tasarim AYNI, sadece adres degisti.
-    // ! 2152 REDDEDILDI: dizipal.rest'e 302 -> baska site (/arama 404, episodes-list-grid 0,
-    // ! card-info 0, /ajax-search 404). Karistirmayin.
-    // * 2026-11-19 ADRES DEGISIKLIGI 2149 -> 2150:
-    // * dizipal2149.com bu agdan SNI seviyesinde ENGELLENIYOR (DPI, TLS ClientHello'daki SNI'a
-    // * bakip RST atiyor). Olcum ayni IP 172.67.222.113 uzerinde:
-    // *   SNI=dizipal2149.com -> ConnectionReset (WinError 10054)
-    // *   SNI=cloudflare.com  -> HTTP 200  (yani IP/ag saglam, engel isim bazli)
-    // * Site OLU DEGIL, eklenti bozuk degil; sadece bu agdan erisilemiyor.
-    // * dizipal2150.com ayni tasarim: /bolumler episodes-list-grid=1 + episode-list-item=24,
-    // * /diziler content-grid=1 + card-info=24, /ajax-search?q=over {"success":true}.
-    // * TAM OYNATMA DOGRULANDI (2026-11-19): segment 2439864 B, 188'in kati, ilk bayt 0x47.
-    override var mainUrl              = "https://dizipal2150.com"
+    // * 2026-11-22 KOK NEDEN: dizipal2150.com ORIGIN'de 502 (hem Chrome hem Googlebot UA,
+    // * / /bolumler /diziler /filmler hepsi "error code: 502"; CF-RAY var). Site ayakta degil.
+    // * Yeni canli adres dizipal2152.com (200) — ama TASARIM DA DEGISTI:
+    // *   /bolumler  -> kartlar a.episode-row-home (div.episodes-grid-home), 24 adet
+    // *   /diziler   -> article.grid-card > a.grid-card-link > h3.grid-card-title, 24 adet
+    // *   bolum URL'si artik /dizi/<slug>-<id>/<N>-sezon/<N>-bolum (eski /bolum/ semasi yok)
+    // *   sayfa icindeki linkler dizipal1.rest'e gidiyor (sibling domain yonlendirmesi).
+    // *   bolumde #videoContainer/data-cfg YOK -> yeni zincir: data-iframe-url=/embed/?token=...
+    // *   -> base64 JS -> dop.palv2.cfd player -> var videoSrc="/hls/<b64>" -> CDN m3u8
+    // *   -> media playlist, segmentler gomplayer-N.jpeg (ICERIK MPEG-TS).
+    // * TAM OYNATMA DOGRULANDI (2026-11-22): gomplayer-1.jpeg 2340600 B = 188x12450,
+    // * ilk bayt 0x47, sync 20/20 = GERCEK VIDEO. Ikinci yol (mntplayer) fMP4 moof+mdat verdi.
+    // * Eski seciciler/zincir SILINMEDI, hepsi fallback olarak korunuyor.
+    // ! 2152 ESKIDEN reddedilmisti (302 -> baska site). 2026-11-22'de 2152 artik GERCEK site:
+    // ! bolumler/diziler sayfalari dolu, tam oynatma kanitli. O eski not artik gecerli degil.
+    override var mainUrl              = "https://dizipal2152.com"
     override var name                 = "DiziPal"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -113,12 +118,65 @@ class DiziPal : MainAPI() {
             request.data,
         ).document
         val home     = if (request.data.contains("/bolumler")) {
-            document.select("div.episodes-list-grid > a.episode-list-item").mapNotNull { it.sonBolumler() }
+            // * 2026-11-22 YENI TASARIM: kartlar a.episode-row-home (div.episodes-grid-home icinde).
+            // * Eski a.episode-list-item hala deneniyor (eski adresler icin geriye uyumlu).
+            val yeniKartlar = document.select("div.episodes-grid-home > a.episode-row-home")
+            if (yeniKartlar.isNotEmpty()) {
+                yeniKartlar.mapNotNull { it.sonBolumlerYeni() }
+            } else {
+                document.select("div.episodes-list-grid > a.episode-list-item").mapNotNull { it.sonBolumler() }
+            }
         } else {
-            document.select("ul.content-grid > li").mapNotNull { it.diziler() }
+            val yeniKartlar = document.select("article.grid-card > a.grid-card-link")
+            if (yeniKartlar.isNotEmpty()) {
+                yeniKartlar.mapNotNull { it.dizilerYeni() }
+            } else {
+                document.select("ul.content-grid > li").mapNotNull { it.diziler() }
+            }
         }
 
         return newHomePageResponse(request.name, home, hasNext=false)
+    }
+
+    // * 2026-11-22 YENI TASARIM (dizipal1.rest): <a class="episode-row-home" href=".../dizi/<slug>/<N>-sezon/<N>-bolum">
+    // *   <div class="episode-row-info"><span class="episode-row-title">Dexter: Resurrection</span>
+    // *   <span class="episode-row-detail">2. Sezon 3. Bölüm</span></div></a>
+    private fun Element.sonBolumlerYeni(): SearchResponse? {
+        val name    = this.selectFirst(".episode-row-title")?.text()?.trim() ?: return null
+        val detay   = this.selectFirst(".episode-row-detail")?.text()?.trim().orEmpty()
+        val episode = detay.replace(". Sezon ", "x").replace(". Bölüm", "").takeIf { it.isNotBlank() }
+        val title   = if (episode != null) "$name $episode" else name
+
+        val href      = fixUrlNull(this.attr("href")) ?: return null
+        val imgElement = this.selectFirst("img")
+        val posterUrl = fixUrlNull(imgElement?.attr("data-src")?.ifEmpty { imgElement.attr("src") })
+
+        // * Yeni sema: /dizi/<slug>-<id>/<N>-sezon/<N>-bolum  ->  seri kokune in
+        // * Eski sema : /bolum/<slug>-<N>-sezon-<N>-bolum     ->  /dizi/ + sezon-bolum eki atilir
+        val seriesUrl = if (href.contains("/-sezon/")) {
+            href.replace(Regex("/\\d+-sezon/.*$"), "")
+        } else {
+            href.replace(Regex("-\\d+-sezon-\\d+-bolum.*$"), "")
+                .replace("/bolum/", "/dizi/")
+        }
+
+        return newTvSeriesSearchResponse(title, seriesUrl, TvType.TvSeries) {
+            this.posterUrl = posterUrl
+        }
+    }
+
+    // * 2026-11-22 YENI TASARIM: dizi kartlari <article class="grid-card"><a class="grid-card-link" href=".../dizi/<slug>">
+    // *   <img alt="..."><h3 class="grid-card-title">The Blue Road</h3></a></article>
+    private fun Element.dizilerYeni(): SearchResponse? {
+        val title = this.selectFirst(".grid-card-title")?.text()?.trim()
+            ?: this.selectFirst("h3")?.text()?.trim()
+            ?: this.selectFirst("img")?.attr("alt")?.trim()?.takeIf { it.isNotBlank() }
+            ?: return null
+        val href  = fixUrlNull(this.attr("href")) ?: return null
+        val imgElement = this.selectFirst("img")
+        val posterUrl = fixUrlNull(imgElement?.attr("data-src")?.ifEmpty { imgElement.attr("src") })
+
+        return newTvSeriesSearchResponse(title, href, TvType.TvSeries) { this.posterUrl = posterUrl }
     }
 
     private fun Element.sonBolumler(): SearchResponse? {
@@ -151,10 +209,15 @@ class DiziPal : MainAPI() {
         // Zorunlu alanların kontrolü (Early return)
         val title = this.title ?: return null
         val href  = this.url ?: return null
-        // * arama JSON'undaki "rating": "6.8" -> afis uzerindeki reyting etiketi
-        val puan  = this.rating?.replace(",", ".")?.toDoubleOrNull()
+        // * 2026-11-23: reyting artik "imdb" alaninda ve SAYI olarak geliyor; eski String "rating"
+        // * alani da okunmaya devam ediyor (site eski bicime donerse diye).
+        val puan  = this.imdb
+            ?: this.rating?.replace(",", ".")?.toDoubleOrNull()
 
-        return if (this.type.equals("Dizi", ignoreCase = true)) {
+        // * 2026-11-23: "type" artik kucuk harf ("dizi"/"film"). Eski "Dizi" de kabul ediliyor.
+        val diziMi = this.type?.trim()?.lowercase() == "dizi"
+
+        return if (diziMi) {
             newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
                 this.posterUrl = this@toPostSearchResult.poster
                 this.year      = this@toPostSearchResult.year
@@ -170,47 +233,39 @@ class DiziPal : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        // Arama URL'sini doğrudan parametre ile oluşturuyoruz
-        val searchUrl = "$mainUrl/ajax-search?q=$query"
-
-        val responseRaw = app.get(
-            searchUrl,
-            headers = mapOf(
-                "Accept" to "application/json, text/javascript, */*; q=0.01",
-                "X-Requested-With" to "XMLHttpRequest"
-            ),
-            referer = "$mainUrl/"
+        // * 2026-11-23 KOK NEDEN: arama ucu DEGISTI. Eski "$mainUrl/ajax-search?q=.." artik
+        // * HTTP 404 donuyor (olculdu: over/iron/guy hepsi 404, HTML hata sayfasi) -> eklentinin
+        // * aramasi tamamen olu idi. Yeni canli uc: "$mainUrl/search?q=.." -> HTTP 200
+        // * application/json, {"results":[{title,slug,year,poster,imdb,type:"dizi"|"film",url}]}.
+        // * ESKI UC SILINMEDI: yeni uc bos/hatali donerse eski uca dusuluyor (geriye uyumlu).
+        val basliklar = mapOf(
+            "Accept"           to "application/json, text/javascript, */*; q=0.01",
+            "X-Requested-With" to "XMLHttpRequest"
         )
 
-        // JSON'ı yeni data class yapımızla parse ediyoruz
-        val jsonResponse = AppUtils.parseJson<DizipalSearchData>(responseRaw.text)
-
-        val searchResponses = mutableListOf<SearchResponse>()
-
-        // Eğer results null dönerse veya boşsa güvenli şekilde geçiyoruz
-        jsonResponse.results?.forEach { item ->
-            val title = item.title ?: return@forEach
-            val url = item.url ?: return@forEach
-            val poster = item.poster
-
-            // Dizi mi Film mi olduğunu API'den gelen "type" alanına göre belirliyoruz
-            if (item.type == "Dizi") {
-                searchResponses.add(
-                    newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
-                        this.posterUrl = poster
-                        this.year = item.year
-                    }
-                )
-            } else {
-                searchResponses.add(
-                    newMovieSearchResponse(title, url, TvType.Movie) {
-                        this.posterUrl = poster
-                        this.year = item.year
-                    }
-                )
+        val yeniUc = app.get("$mainUrl/search?q=$query", headers = basliklar, referer = "$mainUrl/")
+        var jsonResponse: DizipalSearchData? = yeniUc.text
+            .takeIf { it.trimStart().startsWith("{") }
+            ?.let {
+                runCatching { AppUtils.parseJson<DizipalSearchData>(it) }.getOrNull()
             }
+
+        if (jsonResponse?.results.isNullOrEmpty()) {
+            Log.w("DZP", "Yeni arama ucu ($mainUrl/search) sonuc vermedi (HTTP ${yeniUc.code}), eski ajax-search deneniyor")
+            val eskiUc = app.get("$mainUrl/ajax-search?q=$query", headers = basliklar, referer = "$mainUrl/")
+            jsonResponse = jsonResponse
+                ?: eskiUc.text.takeIf { it.trimStart().startsWith("{") }
+                    ?.let { runCatching { AppUtils.parseJson<DizipalSearchData>(it) }.getOrNull() }
+                ?.takeIf { !it.results.isNullOrEmpty() }
+                ?: jsonResponse
         }
 
+        val searchResponses = mutableListOf<SearchResponse>()
+        jsonResponse?.results?.forEach { item ->
+            item.toPostSearchResult()?.let { searchResponses.add(it) }
+        }
+
+        Log.d("DZP", "Arama \"$query\" -> ${searchResponses.size} sonuc")
         return searchResponses
     }
 
@@ -223,21 +278,48 @@ class DiziPal : MainAPI() {
             .replace(Regex("-\\d+-sezon.*"), "")
         return load(seriesUrl)
     }
+    // * 2026-11-22 YENI SEMA: /dizi/<slug>-<id>/<N>-sezon/<N>-bolum -> seri kokune in
+    if (Regex("/\\d+-sezon/").containsMatchIn(url)) {
+        return load(url.replace(Regex("/\\d+-sezon/.*$"), ""))
+    }
 
     val document = app.get(url).document
 
     // Genel Meta Bilgileri
     val poster = fixUrlNull(document.selectFirst("meta[property=og:image]")?.attr("content"))
-    
-    // .info-row içindeki span yapısından veriyi çekiyoruz
-    val year = document.selectFirst("div.info-row:contains(Yıl) span.info-value")?.text()?.trim()?.toIntOrNull()
-    val description = document.selectFirst("p.series-description")?.text()?.trim()
+
+    // * 2026-11-22 YENI TASARIM (dizipal1.rest): aside.series-data-panel > div.series-data-item
+    // *   <span class="label">IMDB Puanı</span><span class="value">★ 8.5</span>
+    // *   <span class="label">Yapım Yılı</span><time class="value" datetime="2025">2025</time>
+    // * Eski div.info-row secicileri KORUNUYOR (eski adresler icin geriye uyumlu).
+    fun veriSatiri(etiket: String): String? =
+        document.select("div.series-data-item").firstOrNull {
+            it.selectFirst("span.label")?.text()?.contains(etiket, ignoreCase = true) == true
+        }?.selectFirst("span.value, time.value")?.text()?.trim()
+
+    // * 2026-11-23 OLCUM (dizipal1.rest): "Yapım Yılı" diye bir series-data-item YOK.
+    // * Gercek label'lar: IMDB Puanı / İzlenme Sayısı / Tür / Durum / Platform / Eklenme Tarihi.
+    // * Yil bilgisi yalnizca <meta property="og:image:alt" content="Jack Hunter izle (2008) | dizipal">
+    // * alaninda duruyor; oradan cikariyoruz. Eski yollar KORUNUYOR.
+    val year = veriSatiri("Yapım Yılı")?.let { Regex("(\\d{4})").find(it)?.value?.toIntOrNull() }
+        ?: document.selectFirst("meta[property=og:image:alt]")?.attr("content")
+            ?.let { Regex("\\((\\d{4})\\)").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+        ?: document.selectFirst("meta[property=og:title]")?.attr("content")
+            ?.let { Regex("\\((\\d{4})\\)").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+        ?: document.selectFirst("div.info-row:contains(Yıl) span.info-value")?.text()?.trim()?.toIntOrNull()
+    // * 2026-11-23: aciklama artik "p.series-summary" icinde (series-description/series-plot YOK).
+    val description = document.selectFirst("p.series-summary")?.text()?.trim()?.takeIf { it.isNotBlank() }
+        ?: document.selectFirst("p.series-description")?.text()?.trim()
+        ?: document.selectFirst("p.series-plot, div.series-plot, section.series-plot")?.text()?.trim()
     // * IMDB puani: <div class="info-row"><span class="info-label">IMDB</span><span class="info-value">8.7</span>
-    val score = document.selectFirst("div.info-row:contains(IMDB) span.info-value")?.text()?.trim()
-        ?.let { Score.from10(it) }
+    val score = (veriSatiri("IMDB") ?: document.selectFirst("div.info-row:contains(IMDB) span.info-value")?.text()?.trim())
+        ?.let { Score.from10(Regex("([0-9]+(?:[.,][0-9]+)?)").find(it)?.value?.replace(',', '.')) }
     
     // "Kategoriler" altındaki tüm <a> tag'lerini çekip listeye çeviriyoruz
     val tags = document.select("div.info-row:contains(Kategoriler) span.info-value.categories a").map { it.text().trim() }
+        .ifEmpty {
+            veriSatiri("Tür")?.split(",", "/")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+        }
     
     // HTML'de süre bilgisi mevcut değil, gelirse diye hazırlıklı bırakıyorum:
     // val durationText = document.selectFirst("div.info-row:contains(Süre) span.info-value")?.text()
@@ -248,22 +330,54 @@ class DiziPal : MainAPI() {
         // Yeni DOM yapısında başlık h1 tag'inde class ile tutuluyor
         val title = document.selectFirst("h1.series-title")?.text()?.trim() ?: return null
 
-        val episodes = document.select("div.detail-episode-item-wrap").mapNotNull { wrap ->
-            val anchor = wrap.selectFirst("a.detail-episode-item") ?: return@mapNotNull null
-            val epHref = fixUrlNull(anchor.attr("href")) ?: return@mapNotNull null
-            val epName = anchor.selectFirst("div.detail-episode-title")?.text()?.trim() ?: return@mapNotNull null
-            
-            // Format: "1. Sezon 1. Bölüm" -> Regex ile güvenli parse işlemi
-            val subtitle = anchor.selectFirst("div.detail-episode-subtitle")?.text()?.trim() ?: ""
-            val match = Regex("""(\d+)\.\s*[Ss]ezon\s*(\d+)\.\s*[Bb]ölüm""").find(subtitle)
-            
-            val epSeason = match?.groupValues?.getOrNull(1)?.toIntOrNull()
-            val epEpisode = match?.groupValues?.getOrNull(2)?.toIntOrNull()
+        // * 2026-11-22 YENI TASARIM (dizipal1.rest):
+        // *   div.episodes-grid#episodes-carousel > div.episode-card > a.episode-card-link
+        // *   <a href=".../1-sezon/2-bolum" class="episode-card-link" data-iframe-url="/embed/?token=..."
+        // *      data-title="Camera Shy" data-season="1" data-episode="2">
+        // *        <div class="episode-title">Camera Shy</div>
+        // *        <div class="episode-season-info">1. Sezon 2. Bölüm</div></a>
+        // * Eski div.detail-episode-item-wrap yapisi KORUNUYOR (geriye uyumlu).
+        val yeniBolumler = document.select("div.episode-card > a.episode-card-link")
+        val episodes = if (yeniBolumler.isNotEmpty()) {
+            yeniBolumler.mapNotNull { anchor ->
+                val epHref = fixUrlNull(anchor.attr("href")) ?: return@mapNotNull null
+                val epName = anchor.selectFirst("div.episode-title")?.text()?.trim()
+                    ?: anchor.attr("data-title")?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: return@mapNotNull null
 
-            newEpisode(epHref) {
-                this.name    = epName
-                this.episode = epEpisode
-                this.season  = epSeason
+                // Once data-* alanlari, yoksa "1. Sezon 2. Bölüm" metnini parse et
+                val subtitle = anchor.selectFirst("div.episode-season-info")?.text()?.trim() ?: ""
+                val match    = Regex("""(\d+)\.\s*[Ss]ezon\s*(\d+)\.\s*[Bb]ölüm""").find(subtitle)
+
+                val epSeason  = anchor.attr("data-season").toIntOrNull()
+                    ?: match?.groupValues?.getOrNull(1)?.toIntOrNull()
+                val epEpisode = anchor.attr("data-episode").toIntOrNull()
+                    ?: match?.groupValues?.getOrNull(2)?.toIntOrNull()
+
+                newEpisode(epHref) {
+                    this.name    = epName
+                    this.episode = epEpisode
+                    this.season  = epSeason
+                }
+            }
+        } else {
+            document.select("div.detail-episode-item-wrap").mapNotNull { wrap ->
+                val anchor = wrap.selectFirst("a.detail-episode-item") ?: return@mapNotNull null
+                val epHref = fixUrlNull(anchor.attr("href")) ?: return@mapNotNull null
+                val epName = anchor.selectFirst("div.detail-episode-title")?.text()?.trim() ?: return@mapNotNull null
+
+                // Format: "1. Sezon 1. Bölüm" -> Regex ile güvenli parse işlemi
+                val subtitle = anchor.selectFirst("div.detail-episode-subtitle")?.text()?.trim() ?: ""
+                val match = Regex("""(\d+)\.\s*[Ss]ezon\s*(\d+)\.\s*[Bb]ölüm""").find(subtitle)
+
+                val epSeason = match?.groupValues?.getOrNull(1)?.toIntOrNull()
+                val epEpisode = match?.groupValues?.getOrNull(2)?.toIntOrNull()
+
+                newEpisode(epHref) {
+                    this.name    = epName
+                    this.episode = epEpisode
+                    this.season  = epSeason
+                }
             }
         }
 
@@ -335,6 +449,24 @@ class DiziPal : MainAPI() {
         )
 
         var getResponse = app.get(url = data, headers = botBasliklari)
+
+        // * 2026-11-22 YENI TASARIM ONCE DENENIR (dizipal1.rest / dizipal2152.com):
+        // *   Bolum sayfasinda #videoContainer / data-cfg YOK. Zincir tamamen farkli:
+        // *   1) Bolum sayfasi / dizi sayfasi -> a.episode-card-link[data-iframe-url="/embed/?token=..."]
+        // *   2) GET {kök}/embed/?token=...  -> SADECE base64 parcali JS. Parcalari birlestirince
+        // *      player URL'si cikar (or. https://dop.palv2.cfd/<slug>-1-sezon-2-bolum?site=dizipal2)
+        // *   3) Player sayfasinda: var videoSrc = "/hls/<base64>"  (bazi bolumlerde isDirectFile=true -> duz mp4)
+        // *   4) base64 coz -> https://<cdn>/storage/media/<id>-720.mp4/gomindex.m3u8
+        // *      NOT: bu bir MEDIA playlist olabilir (STREAM-INF yok) ya da master (STREAM-INF var).
+        // *      Segmentler "gomplayer-1.jpeg" gibi gorunur ama ICERIK MPEG-TS'tir (188+0x47).
+        // * 2026-11-22 OLCUM (kanitli): 2340600 B = 188x12450, ilk bayt 0x47, sync 20/20.
+        // * Basarili olursa dogrudan doneriz; olmazsa ESKI Bootcap yolu aynen calismaya devam eder.
+        if (yeniTasarimLinkler(data, subtitleCallback, callback)) {
+            Log.d("DZP", "Yeni tasarim zinciri basarili")
+            return true
+        }
+        Log.w("DZP", "Yeni tasarim zinciri sonuc vermedi, eski (Bootcap/data-cfg) yol deneniyor")
+
         var configToken = getResponse.document.selectFirst("#videoContainer")?.attr("data-cfg")?.trim()
 
         if (configToken.isNullOrEmpty()) {
@@ -651,6 +783,297 @@ class DiziPal : MainAPI() {
 
         return true
     }
+
+    // ============================================================================================
+    // * 2026-11-23 mntplayer ZINCIRI (dizipal2152.com + dizipal1.rest) — TAM OYNATMA DOGRULANDI
+    // *   bolum sayfasi -> <iframe id="montana-frame" src="https://vod.mntplayer.com:8443/series/<seri>/<ep>">
+    // *   -> iframe HTML: <div id="player" data-src="/p/<token>/master.m3u8">
+    // *   -> GET master.m3u8 (501 B): #EXT-X-MEDIA ile AYRI audio (audio-0.m3u8) ve altyazi
+    // *      (subs-0.m3u8) gruplari; tek #EXT-X-STREAM-INF satiri = "video.m3u8"
+    // *   -> GET video.m3u8 (31587 B): #EXTINF=984, #EXT-X-KEY:METHOD=AES-128,URI="key" (IV ETIKETTE YOK)
+    // *   -> ilk segment 1318240 B -> AES-128-CBC(sifir IV) decrypt -> 1318238 B
+    // *      ilk baytlar 00 00 09 54 "moof" => fMP4/CMAF (moof+mdat). 188'e BOLUNMEZ, 0x47 YOKTUR
+    // *      ama GERCEK VIDEODUR. "0x47 yok" diye basarisiz saymak YANLIS olur.
+    // * NOT: mntplayer'da segment ve varyant icin Referer/UA SART DEGIL (referersiz de 200 olculdu),
+    // *      yine de player'a referer veriyoruz.
+    private suspend fun mntPlayerLinkler(
+        iframeUrl: String,
+        bolumUrl: String,
+        chromeUa: String,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            val yanit = run {
+                // * 2026-11-23 OLCUM: mntplayer zaman zaman HTTP 503 + "Şu anda yoğunluk var,
+                // * lütfen birazdan tekrar deneyin." donduruyor (gecici). Tek denemede pes etmek
+                // * bolumu hatali gostermeye yol acar; kisa bekleyip tekrar deniyoruz.
+                var son = app.get(
+                    url     = iframeUrl,
+                    headers = mapOf("User-Agent" to chromeUa, "Accept" to "text/html,application/xhtml+xml,*/*;q=0.8"),
+                    referer = bolumUrl
+                )
+                var deneme = 0
+                while (deneme < 2 && son.code != 200) {
+                    Log.w("DZP-YENI", "mntplayer iframe HTTP ${son.code}, 3 sn sonra tekrar (deneme ${deneme + 1})")
+                    delay(3000L)
+                    son = app.get(
+                        url     = iframeUrl,
+                        headers = mapOf("User-Agent" to chromeUa, "Accept" to "text/html,application/xhtml+xml,*/*;q=0.8"),
+                        referer = bolumUrl
+                    )
+                    deneme++
+                }
+                son
+            }
+            // * data-src goreli olabilir ("/p/<token>/master.m3u8"); iframe URL'sine gore mutlaklastir.
+            val dataSrc = Regex("""data-src\s*=\s*"([^"]+)"""").find(yanit.text)?.groupValues?.get(1)
+                ?: Regex("""(?:"|')?(/[^"'\s]*master\.m3u8[^"'\s]*)""").find(yanit.text)?.groupValues?.get(1)
+            if (dataSrc == null) {
+                Log.w("DZP-YENI", "mntplayer: data-src (master.m3u8) bulunamadi (${yanit.text.length} B)")
+                return false
+            }
+            val masterUrl = mutlakUrl(dataSrc, iframeUrl)
+            Log.d("DZP-YENI", "mntplayer master » $masterUrl")
+
+            val master = app.get(
+                url     = masterUrl,
+                headers = mapOf("User-Agent" to chromeUa, "Accept" to "*/*"),
+                referer = iframeUrl
+            )
+            if (!master.text.contains("#EXTM3U")) {
+                Log.w("DZP-YENI", "mntplayer: master HLS degil (${master.text.length} B)")
+                return false
+            }
+
+            // * KRITIK: master'da #EXT-X-MEDIA satirlari da "URI=...m3u8" icerir; duz
+            // * "ilk # ile baslamayan satir" almak audio-0.m3u8'i kapabilir. Bu yuzden
+            // * SADECE #EXT-X-STREAM-INF'ten SONRAKI ilk anahtar satirini aliyoruz.
+            var mediaUrl = masterUrl
+            if (master.text.contains("#EXT-X-STREAM-INF")) {
+                val satirlar = master.text.lines().map { it.trim() }
+                val idx      = satirlar.indexOfFirst { it.startsWith("#EXT-X-STREAM-INF") }
+                val varyant  = if (idx >= 0) {
+                    satirlar.drop(idx + 1).firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
+                } else null
+                if (varyant == null) {
+                    Log.w("DZP-YENI", "mntplayer: master'da varyant satiri yok")
+                    return false
+                }
+                mediaUrl = mutlakUrl(varyant, masterUrl)
+                val v = app.get(
+                    url     = mediaUrl,
+                    headers = mapOf("User-Agent" to chromeUa, "Accept" to "*/*"),
+                    referer = masterUrl
+                )
+                if (!v.text.contains("#EXTINF")) {
+                    Log.w("DZP-YENI", "mntplayer: varyant #EXTINF icermiyor (${v.text.length} B)")
+                    return false
+                }
+                Log.d("DZP-YENI", "mntplayer varyant » $mediaUrl (${v.text.length} B, EXTINF=${Regex("#EXTINF").findAll(v.text).count()}, KEY=${v.text.contains("#EXT-X-KEY")})")
+            } else if (!master.text.contains("#EXTINF")) {
+                Log.w("DZP-YENI", "mntplayer: ne STREAM-INF ne EXTINF var")
+                return false
+            }
+
+            val mediaKok = "https://" + mediaUrl.substringAfter("//").substringBefore("/")
+            callback.invoke(
+                newExtractorLink(
+                    source  = this.name,
+                    name    = "${this.name} [mntplayer]",
+                    url     = mediaUrl,
+                    type    = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = mediaKok + "/"
+                    this.quality = 1080
+                    this.headers = mapOf("User-Agent" to chromeUa, "Referer" to mediaKok + "/")
+                }
+            )
+            return true
+        } catch (e: Exception) {
+            Log.e("DZP-YENI", "mntplayer zinciri hata: ${e.message}")
+            return false
+        }
+    }
+
+    // * 2026-11-22 YENI TASARIM ZINCIRI (dizipal1.rest / dizipal2152.com)
+    // * Kanitlanmis akis (segment baytlari dahil olculdu):
+    // *   bolum/dizi sayfasi -> a.episode-card-link[data-iframe-url=/embed/?token=..]
+    // *   -> /embed/?token=..  (base64 parcali JS)  -> https://<player>/<slug>-<N>-sezon-<N>-bolum?site=dizipal2
+    // *   -> player JS: var videoSrc = "/hls/<base64>"  -> https://<cdn>/storage/media/<id>-720.mp4/gomindex.m3u8
+    // *   -> media/masker m3u8; segmentler gomplayer-N.jpeg (ICERIK MPEG-TS) VEYA video-N.m4s (fMP4)
+    // ============================================================================================
+    private suspend fun yeniTasarimLinkler(
+        data: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        try {
+            val chromeUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            val iframeBasliklari = mapOf(
+                "User-Agent"      to chromeUa,
+                "Accept"          to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language" to "tr-TR,tr;q=0.9,en;q=0.8",
+                "Sec-Fetch-Dest"  to "iframe",
+                "Sec-Fetch-Mode"  to "navigate",
+                "Sec-Fetch-Site"  to "same-origin"
+            )
+
+            // 1) Bolum sayfasi (yoksa dizi kokune in) ve embed token'i bul
+            var sayfa = app.get(url = data, headers = iframeBasliklari)
+
+            // * 2026-11-23 OLCUM (KRITIK KOK NEDEN): site iframe yolunu YINE degistirdi.
+            // * Bolum sayfasinda artik "a.episode-card-link[data-iframe-url]" HIC YOK (0 adet,
+            // * 4 farkli bolumde olculdu). Yerine dogrudan player iframe'i gomuluyor:
+            // *   <iframe id="montana-frame" src="https://vod.mntplayer.com:8443/series/<seriId>/<epId>"
+            // *           data-base="..."><iframe id="trailer-iframe">
+            // * Bu yuzden v133'teki episode-card-link yolu bulamiyor, eski data-cfg yoluna dusuyor
+            // * (o da artik yok) -> TUM bolumlerde oynatma basarisiz. Asagidaki yol bunu cozer.
+            // * ESKI episode-card-link yolu SILINMEDI, site eski tasarima donerse diye korunuyor.
+            val montanaIframe = sayfa.document
+                .selectFirst("iframe#montana-frame[src]")?.attr("src")?.trim()
+                ?.takeIf { it.startsWith("http") }
+                ?: sayfa.document.select("iframe[src]")
+                    .map { it.attr("src").trim() }
+                    .firstOrNull { it.startsWith("http") && !it.contains("trailer") && !it.contains("youtube") }
+
+            if (montanaIframe != null) {
+                Log.d("DZP-YENI", "montana-frame iframe » $montanaIframe")
+                if (mntPlayerLinkler(montanaIframe, data, chromeUa, callback)) return true
+                Log.w("DZP-YENI", "mntplayer zinciri sonuc vermedi, episode-card-link yolu deneniyor")
+            }
+
+            var embedYolu = sayfa.document.selectFirst("a.episode-card-link[data-iframe-url]")?.attr("data-iframe-url")?.trim()
+                ?.takeIf { it.isNotEmpty() }
+
+            // Bolum URL'sinde kart yoksa dizi sayfasina in ve dogru bolumun kartini bul
+            if (embedYolu == null) {
+                val diziUrl = if (Regex("/\\d+-sezon/").containsMatchIn(data)) {
+                    data.replace(Regex("/\\d+-sezon/.*$"), "")
+                } else {
+                    data
+                }
+                if (diziUrl != data) {
+                    sayfa = app.get(url = diziUrl, headers = iframeBasliklari)
+                }
+                val kartlar = sayfa.document.select("a.episode-card-link[data-iframe-url]")
+                val anahtar = Regex("/(\\d+)-sezon/(\\d+)-bolum").find(data)
+                val hedef = if (anahtar != null) {
+                    val s = anahtar.groupValues[1]
+                    val b = anahtar.groupValues[2]
+                    kartlar.firstOrNull {
+                        it.attr("data-season") == s && it.attr("data-episode") == b
+                    } ?: kartlar.firstOrNull()
+                } else {
+                    kartlar.firstOrNull()
+                }
+                embedYolu = hedef?.attr("data-iframe-url")?.trim()?.takeIf { it.isNotEmpty() }
+            }
+
+            if (embedYolu == null) {
+                Log.w("DZP-YENI", "embed yolu (data-iframe-url) bulunamadi")
+                return false
+            }
+            Log.d("DZP-YENI", "embed yolu » $embedYolu")
+
+            val kok = mainUrl.trimEnd('/')
+            val embedUrl = if (embedYolu.startsWith("http")) embedYolu else "$kok/$embedYolu".replace("//embed/", "/embed/")
+
+            // 2) /embed/ sayfasindaki base64 parcalarini birlestir -> player URL
+            val embedYanit  = app.get(url = embedUrl, headers = iframeBasliklari, referer = data)
+            val playerUrl   = embedYanit.text
+                .let { Regex("\"([A-Za-z0-9+/=]{4,})\"").findAll(it).map { m -> m.groupValues[1] }.toList() }
+                .mapNotNull { parca -> b64Metin(parca) }
+                .joinToString("")
+                .takeIf { it.startsWith("http") }
+            if (playerUrl == null) {
+                Log.w("DZP-YENI", "embed sayfasindan player URL cikarilamadi (${embedYanit.text.length} B)")
+                return false
+            }
+            Log.d("DZP-YENI", "player URL » $playerUrl")
+
+            // 3) Player sayfasindan videoSrc -> manifest
+            val playerYanit = app.get(
+                url     = playerUrl,
+                headers = mapOf("User-Agent" to chromeUa, "Accept" to "*/*"),
+                referer = data
+            )
+            val videoSrc = Regex("""var\s+videoSrc\s*=\s*"([^"]+)"""").find(playerYanit.text)?.groupValues?.get(1)
+            if (videoSrc == null) {
+                Log.w("DZP-YENI", "player sayfasinda videoSrc yok (${playerYanit.text.length} B)")
+                return false
+            }
+            val isDirectFile = Regex("""var\s+isDirectFile\s*=\s*true""").containsMatchIn(playerYanit.text)
+
+            val ham     = videoSrc.removePrefix("/hls/")
+            val cozulen = b64Metin(ham)
+            if (cozulen == null || !cozulen.startsWith("http")) {
+                Log.w("DZP-YENI", "videoSrc cozulemedi: $videoSrc")
+                return false
+            }
+            Log.d("DZP-YENI", "videoSrc » $cozulen (isDirectFile=$isDirectFile)")
+
+            // 4) Player'a verilecek link
+            val playerKok = "https://" + playerUrl.substringAfter("//").substringBefore("/")
+            if (isDirectFile) {
+                callback.invoke(
+                    newExtractorLink(
+                        source  = this.name,
+                        name    = "${this.name} [mp4]",
+                        url     = cozulen,
+                        type    = ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = playerKok + "/"
+                        this.quality = 720
+                        this.headers = mapOf("User-Agent" to chromeUa, "Referer" to playerKok + "/")
+                    }
+                )
+                return true
+            }
+
+            // * manifest GUVENLIK KONTROLU: gercekten HLS mi?
+            val mf      = app.get(url = cozulen, headers = mapOf("User-Agent" to chromeUa, "Accept" to "*/*"), referer = playerKok + "/")
+            val mfMetin = mf.text
+            if (!mfMetin.contains("#EXTM3U")) {
+                Log.w("DZP-YENI", "manifest HLS degil (${mfMetin.length} B)")
+                return false
+            }
+
+            // * Master ise gercek medya playlist'ini cek; degilse kendisi zaten media playlist
+            var mediaUrl  = cozulen
+            var mediaRef  = playerKok + "/"
+            if (mfMetin.contains("#EXT-X-STREAM-INF")) {
+                val varyant = mfMetin.lineSequence()
+                    .map { it.trim() }
+                    .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
+                if (varyant != null) {
+                    mediaUrl = mutlakUrl(varyant, cozulen)
+                    val v    = app.get(url = mediaUrl, headers = mapOf("User-Agent" to chromeUa, "Accept" to "*/*"), referer = cozulen)
+                    if (!v.text.contains("#EXTINF")) {
+                        Log.w("DZP-YENI", "varyant #EXTINF icermiyor")
+                        return false
+                    }
+                    Log.d("DZP-YENI", "varyant » $mediaUrl (${v.text.length} B, EXTINF=${"#EXTINF".toRegex().findAll(v.text).count()})")
+                }
+            }
+
+            callback.invoke(
+                newExtractorLink(
+                    source  = this.name,
+                    name    = "${this.name} [HLS]",
+                    url     = mediaUrl,
+                    type    = ExtractorLinkType.M3U8
+                ) {
+                    this.referer = mediaRef
+                    this.quality = 720
+                    this.headers = mapOf("User-Agent" to chromeUa, "Referer" to mediaRef)
+                }
+            )
+            return true
+        } catch (e: Exception) {
+            Log.e("DZP-YENI", "yeni tasarim zinciri hata: ${e.message}")
+            return false
+        }
+    }
 }
 
 private fun b64ToBytes(s: String): ByteArray? = try {
@@ -658,6 +1081,31 @@ private fun b64ToBytes(s: String): ByteArray? = try {
         .padEnd((s.length + 3) / 4 * 4, '=')
     Base64.decode(normalized, Base64.DEFAULT)
 } catch (e: Exception) { null }
+
+// * 2026-11-22: Yeni tasarimda URL'ler base64 parcalari halinde veriliyor.
+// * Bosluk/kaçış karakteri iceren parcalar decode edilemezse sessizce atlanir.
+private fun b64Metin(s: String): String? = try {
+    val temiz = s.trim().replace('\n', ' ').replace("\\/", "/")
+    if (temiz.isEmpty()) null
+    else String(
+        Base64.decode(temiz.replace('-', '+').replace('_', '/').padEnd((temiz.length + 3) / 4 * 4, '='), Base64.DEFAULT),
+        Charsets.UTF_8
+    ).filter { it.code in 32..126 }
+} catch (e: Exception) { null }
+
+// * goreli bir m3u8 yolunu, referans URL'sinin kokune gore mutlak hale getirir.
+private fun mutlakUrl(yol: String, referans: String): String = when {
+    yol.startsWith("http") -> yol
+    yol.startsWith("//")   -> "https:$yol"
+    else -> {
+        val kok = referans.substringBefore("?").substringBeforeLast("/")
+        if (yol.startsWith("/")) {
+            "https://" + referans.substringAfter("//").substringBefore("/") + yol
+        } else {
+            "$kok/$yol"
+        }
+    }
+}
 
 private fun xorBytes(a: ByteArray, b: ByteArray): ByteArray {
     val len = minOf(a.size, b.size)

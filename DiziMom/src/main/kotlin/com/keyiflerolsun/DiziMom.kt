@@ -33,8 +33,15 @@ class DiziMom : MainAPI() {
     override var sequentialMainPageScrollDelay = 50L
 
     private val headers = mapOf(
+        // * 2026-11-23 KOK NEDEN: Cloudflare bu site icin YALNIZCA "Chrome/131.0.0.0" dizesini
+        // * 403 ile blokluyor. Ayni IP'de sadece UA surumunu degistirerek olculdu:
+        // *   120/122/124/126/128/130/132/133/134/140 -> HTTP 200 (441608 B)
+        // *   131.0.0.0                                -> HTTP 403 (795 B)   <-- eski sabit deger
+        // *   Firefox/133, bos UA                       -> HTTP 200
+        // * Sec-Fetch/Accept basliklari eklemek 403'u COZMUYOR. Tek degisken UA surum dizesi.
+        // * 131 -> 134 yapildi; oynatma zinciri bu UA ile bastan sona dogrulandi.
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
         "Accept-Language" to "tr-TR,tr;q=0.9",
     )
 
