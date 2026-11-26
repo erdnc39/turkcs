@@ -70,7 +70,27 @@ class DiziPalOriginal : MainAPI() {
     // * ! OYNATMA HALA DOGRULANAMAZ: dplayer82.site (sn./four.) HTTP 403
     // *             "Attention Required! | Cloudflare" — cozulemez IP bani, JS challenge DEGIL.
     // *             Yani adres duzeltmesi gerekli ama tek basina yeterli degil; ban kalkinca acilir.
-    override var mainUrl              = "https://dizipal1827.com"
+    // * 2026-11-25 ADRES DEGISIKLIGI 1827 -> 1828: dizipal1827.com artik OLU (TLS el sikismasinda
+    // *             RST, WinError 10054). Yerine dizipal1828.com canli:
+    // *             baslik "Dizipal | Güncel Giriş Adresi – Dizipal Orijinal", / 200/175840B.
+    // *             TASARIM AYNI (Next.js RSC). Seciciler birebir olculdu:
+    // *             /diziler a.tc 54, /filmler a.tc 16, /anime a.tc 30,
+    // *             /yeni-eklenen-bolumler a.ecl 27, /arama-yap?s=over a.tc 7.
+    // *             (/bolumler bu sitede 404 — o yol yalnizca DiziPal'de var, burada kullanilmaz.)
+    // *             enc cozumu 1828'de CALISIYOR (decryptEnc degismedi):
+    // *             PBKDF2WithHmacSHA512(pass,salt,999,256)+AES-256-CBC ->
+    // *             //four.dplayer82.site/iframe.php?v=256d77e606a0301964be7b8360dea428
+    // * ! AMA OYNATMA KANITI URETILEMEDI (2026-11-25): dplayer82.site IP bani SURUYOR.
+    // *             four./sn./kok hepsi HTTP 403 "Attention Required / you have been blocked",
+    // *             cf-ray var. 5 varyant denendi (Referer yok/self/dizipal1828, Chrome tam
+    // *             header seti, Googlebot) HEPSI 403. TLS 1.3 el sikismasi sorunsuz
+    // *             (Cloudflare'a SNI ile baglaniliyor) -> SNI/ag engeli DEGIL, hesap seviyesi IP bani.
+    // *             Bu yuzden segment bayti GORULEMEDI; eklenti "calisiyor" SAYILMAZ.
+    // *             Ban kalkinca bu adresle acilmasi beklenir ama DOGRULANMADI.
+    // ! NOT: enc cozumunde TUZAK — sayfada IKI "k" alani var: 36 karakterlik sayfa yolu
+    // !      ("dizi/<slug>/1-sezon/1-bolum") ve 200 karakterlik GERCEK parola. Regex'in
+    // !      {40,} siniri tam da 36'lik olani elemek icin. Parola regex'ini gevsetme.
+    override var mainUrl              = "https://dizipal1828.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
