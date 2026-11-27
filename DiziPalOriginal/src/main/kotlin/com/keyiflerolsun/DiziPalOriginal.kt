@@ -21,6 +21,7 @@ import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
+import com.lagradost.cloudstream3.newSubtitleFile
 import com.lagradost.cloudstream3.newTvSeriesLoadResponse
 import com.lagradost.cloudstream3.newTvSeriesSearchResponse
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -90,7 +91,21 @@ class DiziPalOriginal : MainAPI() {
     // ! NOT: enc cozumunde TUZAK — sayfada IKI "k" alani var: 36 karakterlik sayfa yolu
     // !      ("dizi/<slug>/1-sezon/1-bolum") ve 200 karakterlik GERCEK parola. Regex'in
     // !      {40,} siniri tam da 36'lik olani elemek icin. Parola regex'ini gevsetme.
-    override var mainUrl              = "https://dizipal1828.com"
+    // * 2026-11-27 ADRES 1828 -> 1829: kullanicinin Chrome'undan alinan canli HTML'de
+    // *             canonical / og:url / JSON-LD hepsi dizipal1829.com; sayfadaki duyuru
+    // *             "Sonraki adresimiz dizipal1830.com olacaktır" diyor.
+    // *             (1828 hala 200 donebilir ama resmi adres 1829.)
+    // * 2026-11-27 OYNATMA ZINCIRI YENIDEN OLCULDU (Chrome net-export, 194 segment):
+    // *             iframe.php?v=<tok> 200 -> nm.php?v=<tok> 200 master ->
+    // *             nl.php?v=<tok> x3 200 varyant -> nsub.php altyazi ->
+    // *             lkm-<r>.<r>.com/f/.../CDawb750.jpg?v=1 segment (MPEG-TS).
+    // *             Token'lar adres cubugunda 404 veriyor, YALNIZCA Referer=iframeUrl
+    // *             ile calisiyor. openPlayer/source2.php yolu ARTIK YOK.
+    // ! DOGRULANAMADI: bu makinenin IP'si dplayer82.site'de Cloudflare WAF ile KALICI
+    // !     403 "you have been blocked" aliyor (UA/Referer/Sec-Fetch varyantlari cozmuyor,
+    // !     cf-ray IST). Bu yuzden segment bayti BURADAN gorulemedi; kod net-export
+    // !     yapisina gore yazildi, cihazda dogrulanmasi gerekiyor.
+    override var mainUrl              = "https://dizipal1829.com"
     override var name                 = "DiziPalOriginal"
     override val hasMainPage          = true
     override var lang                 = "tr"
@@ -706,6 +721,94 @@ class DiziPalOriginal : MainAPI() {
             }
         }
 
+        // * 2026-11-27 YENI YOL (dizipal1829 + dplayer82 np.js):
+        // * Chrome net-export kaydindan OLCULEN gercek zincir:
+        // *   iframe.php?v=<tok>            -> 200 (HTML, np.js yukler)
+        // *   nm.php?v=<tok>                -> 200 master manifest
+        // *   nl.php?v=<tok>   (x3)         -> 200 varyant manifestleri
+        // *   nsub.php?v=<tok>              -> altyazi
+        // *   lkm-<rastgele>.<rastgele>.com/f/.../CDawb750.jpg?v=1 -> segment (MPEG-TS)
+        // * ONEMLI: bu token'lar adres cubuguna yapistirilinca 404 donuyor; yalnizca
+        // *   Referer = iframe URL iken calisiyorlar. Bu yuzden AYNI iframe HTML'i icinden
+        // *   cikarilip, referer = iframeUrl ile cagriliyor.
+        // * Eski openPlayer/source2.php yolu ARTIK YOK, ama fallback olarak birakildi.
+        fun phpTokenlariCikar(metin: String, ad: String): MutableList<String> {
+            val bulunan = mutableListOf<String>()
+            // * hem "nm.php?v=..." hem "nm.php\/v?..." hem kacisli bicimler
+            val desen = Regex(
+                """(?:^|[/"'\s])""" + ad + """(?:\.php)?\??[^"'\s]*?v=([A-Za-z0-9_\-]{20,})"""
+            )
+            desen.findAll(metin).forEach { m ->
+                val tok = m.groupValues[1]
+                if (!bulunan.contains(tok)) bulunan.add(tok)
+            }
+            return bulunan
+        }
+
+        val nmTokenlar = phpTokenlariCikar(norm, "nm")
+        val nlTokenlar = phpTokenlariCikar(norm, "nl")
+        Log.d("DiziPalOriginal", "--> nm token: ${nmTokenlar.size}, nl token: ${nlTokenlar.size}")
+
+        val dplayerTaban = run {
+            val semaSon = iframeUrl.indexOf("://")
+            if (semaSon <= 0) return@run "https://four.dplayer82.site"
+            val kalan = iframeUrl.substring(semaSon + 3)
+            val host = kalan.substringBefore("/")
+            if (host.isBlank()) "https://four.dplayer82.site"
+            else "${iframeUrl.substring(0, semaSon)}://$host"
+        }
+
+        if (nmTokenlar.isNotEmpty() || nlTokenlar.isNotEmpty()) {
+            for (tok in nmTokenlar) {
+                val masterUrl = "$dplayerTaban/nm.php?v=$tok"
+                Log.d("DiziPalOriginal", "--> NM deneniyor: ${masterUrl.take(80)}…")
+                try {
+                    val govde = app.get(masterUrl, headers = getHeaders(iframeUrl), timeout = 20000L).text
+                    if (govde.contains("#EXT", ignoreCase = true) || govde.contains(".m3u8")) {
+                        Log.d("DiziPalOriginal", "--> NM manifest ${govde.length} bayt")
+                        // * master -> varyantlari cikar (nl.php adresleri master icinde)
+                        for (v in masterVaryantlari(masterUrl, iframeUrl)) {
+                            if (gorulen.add(v)) kaynaklar.add(v)
+                        }
+                        if (kaynaklar.isEmpty()) {
+                            for (v in phpTokenlariCikar(govde, "nl")) {
+                                val vu = "$dplayerTaban/nl.php?v=$v"
+                                if (gorulen.add(vu)) kaynaklar.add(vu)
+                            }
+                        }
+                        // * master'in kendisi de calisiyorsa ekle (CloudStream master'i cozer)
+                        if (kaynaklar.isEmpty() && gorulen.add(masterUrl)) kaynaklar.add(masterUrl)
+                    } else {
+                        Log.w("DiziPalOriginal", "--> NM manifest degil (${govde.length} bayt)")
+                    }
+                } catch (e: Exception) {
+                    Log.e("DiziPalOriginal", "--> NM alinamadi: ${e.message}")
+                }
+            }
+
+            // * nm calismadiysa dogrudan nl token'lari (zaten varyant manifest)
+            for (tok in nlTokenlar) {
+                val varyantUrl = "$dplayerTaban/nl.php?v=$tok"
+                if (gorulen.add(varyantUrl)) kaynaklar.add(varyantUrl)
+            }
+
+            // * ALTYAZI: nsub.php
+            for (tok in phpTokenlariCikar(norm, "nsub")) {
+                try {
+                    subtitleCallback.invoke(
+                        newSubtitleFile(
+                            lang = "Türkçe",
+                            url = "$dplayerTaban/nsub.php?v=$tok"
+                        ) {
+                            headers = mapOf("Referer" to iframeUrl)
+                        }
+                    )
+                } catch (e: Exception) {
+                    Log.w("DiziPalOriginal", "--> altyazi eklenemedi: ${e.message}")
+                }
+            }
+        }
+
         // * ADIM 3: yukun kendisinde zaten m3u8 varsa onlari da al
         ayristir(norm, "")
         ayristir(norm, "gömülü")
@@ -918,9 +1021,13 @@ class DiziPalOriginal : MainAPI() {
     }
 
     private fun getHeaders(baseUrl: String): Map<String, String> {
+        // * 2026-11-27: UA Chrome/120 -> 157. Net-export kaydinda calisan tarayici
+        // * Chrome/157.0.0.0 idi. DiziMom'da bu sitede UA surumune gore 403/200
+        // * degistigi OLCULMUSTU (2026-11-23), ayni risk burada da var.
+        // * Sec-Fetch basliklari da eklendi: iframe.php WAF'i navigasyon istemi bekliyor.
         return mapOf(
-            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36",
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language" to "tr-TR,tr;q=0.9,en;q=0.8",
             "Referer" to baseUrl
         )
