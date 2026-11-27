@@ -126,13 +126,31 @@ class DiziPalOriginal : MainAPI() {
         override fun intercept(chain: Interceptor.Chain): Response {
             val request  = chain.request()
             val response = chain.proceed(request)
-            val doc      = Jsoup.parse(response.peekBody(1024 * 1024).string())
 
-            if (doc.html().contains("Just a moment")) {
-                return cloudflareKiller.intercept(chain)
+            // * 2026-11-27 KRITIK DUZELTME (cihazda 120 sn timeout'un kok nedeni):
+            // * ESKI KOD: peekBody ile bakip response'u KAPATMADAN cloudflareKiller.intercept(chain)
+            // *   cagiriyordu. Ayni chain uzerinde ikinci proceed() yapilinca baglanti tuketilmis
+            // *   oluyor ve istek kilitleniyordu -> ana sayfa 120 sn'de gelmiyordu.
+            // * YENI: yalnizca GERCEKTEN challenge varsa body okunur, response kapatilir,
+            // *   sonra killer cagrilir. Challenge yoksa hicbir ek is yapilmaz.
+            var challengeVar = false
+            try {
+                val metin = response.peekBody(512 * 1024).string()
+                val low = metin.lowercase()
+                challengeVar = low.contains("just a moment") ||
+                    low.contains("bir dakika") ||
+                    low.contains("cf_chl") ||
+                    low.contains("challenge-platform") ||
+                    low.contains("checking your browser")
+            } catch (e: Exception) {
+                Log.w("DiziPalOriginal", "--> peekBody hatasi: ${e.message}")
             }
 
-            return response
+            if (!challengeVar) return response
+
+            Log.w("DiziPalOriginal", "--> Cloudflare challenge algilandi, cozuluyor")
+            try { response.close() } catch (_: Exception) {}
+            return cloudflareKiller.intercept(chain)
         }
     }
 
@@ -152,9 +170,19 @@ class DiziPalOriginal : MainAPI() {
             request.data
         }
 
-        val document = app.get(
-            url, timeout = 15000, interceptor = interceptor, headers = getHeaders(mainUrl)
-        ).document
+        // * 2026-11-27: timeout 15s -> 45s. dizipal1829.com Cloudflare "Just a moment"
+        // * challenge'i veriyor; WebView tabanli cozum 15 sn'ye sigmiyordu ve ana sayfa
+        // * hic acilmiyordu (kullanici: "timeout 120000ms anasayfa gelmedi").
+        // * Ayrica hata FIRLATMIYORUZ: bir kategori patlarsa bos liste donuyoruz ki
+        // * diger kategoriler ve eklentinin geri kalani kullanilabilsin.
+        val document = try {
+            app.get(
+                url, timeout = 45000, interceptor = interceptor, headers = getHeaders(mainUrl)
+            ).document
+        } catch (e: Exception) {
+            Log.e("DiziPalOriginal", "--> Anasayfa alinamadi ($url): ${e.message}")
+            return newHomePageResponse(request.name, emptyList(), hasNext = false)
+        }
 
         val home = mutableListOf<SearchResponse>()
 
@@ -165,7 +193,7 @@ class DiziPalOriginal : MainAPI() {
             val kapakHaritasi = try {
                 val arsiv = app.get(
                     "$mainUrl/diziler",
-                    timeout = 15000, interceptor = interceptor, headers = getHeaders(mainUrl)
+                    timeout = 45000, interceptor = interceptor, headers = getHeaders(mainUrl)
                 ).document
                 arsiv.select("a.tc").mapNotNull { a ->
                     val h = a.attr("href").trim().trim('/')
@@ -290,10 +318,16 @@ class DiziPalOriginal : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         // * 2026-11-03: /?s= ARAMA YAPMIYOR (Next.js 404 + "popular" listesi donuyor).
         // * Dogru uc: /arama-yap?s=<kelime>
-        val document = app.get(
-            "${mainUrl}/arama-yap?s=${query}",
-            timeout = 15000, interceptor = interceptor, headers = getHeaders(mainUrl)
-        ).document
+        // * 2026-11-27: arama da challenge'a takilabilir -> 45s + hata yerine bos liste.
+        val document = try {
+            app.get(
+                "${mainUrl}/arama-yap?s=${query}",
+                timeout = 45000, interceptor = interceptor, headers = getHeaders(mainUrl)
+            ).document
+        } catch (e: Exception) {
+            Log.e("DiziPalOriginal", "--> Arama alinamadi ($query): ${e.message}")
+            return emptyList()
+        }
 
         val sonuc = mutableListOf<SearchResponse>()
         sonuc.addAll(document.select("a.tc").mapNotNull { it.posterKarti() })
